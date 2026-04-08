@@ -43,6 +43,9 @@ yarn-error.log*
 # user uploads (local dev)
 /public/uploads/
 
+# postman local environments (may contain credentials)
+/postman/*environment*.json
+
 # vercel
 .vercel
 
