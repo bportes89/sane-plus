@@ -1,0 +1,962 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum UserRole {
+  CITIZEN
+  COMPANY
+  MODERATOR
+  LEGAL
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum CompanyType {
+  PUBLIC
+  PRIVATE
+  CONCESSION
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ComplaintStatus {
+  REGISTERED
+  NEEDS_REVIEW
+  PUBLISHED
+  COMPANY_VIEWED
+  COMPANY_REPLIED
+  USER_CONTESTED
+  RESOLVED
+  CLOSED
+}
+
+enum ComplaintCategory {
+  WATER
+  SEWER
+  INFRASTRUCTURE
+  FINANCIAL
+  SERVICE
+}
+
+enum ComplaintVisibility {
+  PUBLIC
+  PRIVATE
+  ANONYMIZED
+}
+
+enum ComplaintEventType {
+  REGISTERED
+  CONTENT_ADJUSTED
+  PUBLISHED
+  COMPANY_VIEWED
+  COMPANY_REPLIED
+  USER_CONTESTED
+  MARKED_RESOLVED
+  CLOSED
+}
+
+enum NotificationType {
+  COMPLAINT_REGISTERED
+  COMPANY_REPLIED
+  COMPLAINT_RESOLVED
+  CONTENT_ADJUSTED
+  CONTESTATION_RECEIVED
+  MODERATION
+  ALERT
+  SYSTEM
+}
+
+enum AttachmentType {
+  PHOTO
+  VIDEO
+  DOCUMENT
+}
+
+enum CompanyResponseStatus {
+  VISIBLE
+  HIDDEN
+  UNDER_REVIEW
+}
+
+enum ModerationActionType {
+  EDITED
+  REMOVED
+  HIDDEN
+  REQUESTED_PROOF
+  RESTORED
+}
+
+enum SupportChannel {
+  IN_APP
+  EMAIL
+}
+
+enum SupportTicketCategory {
+  GENERAL
+  COMPLAINT
+  CONTESTATION
+  TECHNICAL
+  ACCOUNT
+  MODERATION
+}
+
+enum SupportTicketStatus {
+  OPEN
+  PENDING_USER
+  PENDING_SUPPORT
+  ESCALATED_MODERATION
+  CLOSED
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum PipelineDataset {
+  COMPANY_METRIC
+  CITY_METRIC
+  REPORT_SNAPSHOT
+  DATA_ALERT
+}
+
+enum AutomationTrigger {
+  COMPLAINT_CREATED
+  COMPANY_REPLIED
+  COMPLAINT_RESOLVED
+  COMPLAINT_SLA_CHECK
+  REPORT_GENERATED
+}
+
+enum WebhookStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum IntegrationScope {
+  COMPANY
+  CITY
+}
+
+enum IntegrationKind {
+  WEBHOOK
+  OFFICIAL_EMAIL
+  API_TOKEN
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  PENDING_VERIFICATION
+  DISABLED
+}
+
+enum AiModerationTarget {
+  COMPLAINT
+  COMPANY_RESPONSE
+}
+
+enum AiModerationSuggestionStatus {
+  PENDING_REVIEW
+  APPLIED
+  DISMISSED
+}
+
+enum AiModerationQueueStatus {
+  PENDING
+  IN_REVIEW
+  RESOLVED
+}
+
+enum AiModerationFeedbackOutcome {
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String?
+  email        String?    @unique
+  phone        String?    @unique
+  passwordHash String?
+  role         UserRole   @default(CITIZEN)
+  status       UserStatus @default(ACTIVE)
+  points       Int        @default(0)
+  city         String?
+  state        String?
+  notifyInApp  Boolean    @default(true)
+  notifyEmail  Boolean    @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  company      Company?   @relation(fields: [companyId], references: [id])
+  companyId    String?
+
+  sessions     Session[]
+  complaints   Complaint[]
+  contestations Contestation[]
+  notifications Notification[]
+  badges       UserBadge[]
+  moderationActions ModerationAction[] @relation("ModerationByUser")
+  aiModerationQueueItems AiModerationQueueItem[] @relation("AiModerationAssignedTo")
+  aiModerationFeedbacks AiModerationFeedback[] @relation("AiModerationFeedbackBy")
+  aiModerationSuggestionsReviewed AiModerationSuggestion[] @relation("AiModerationReviewedBy")
+  accessLogs   AccessLog[]
+  auditLogs    AuditLog[]
+  jobRuns      JobRun[]
+  ratings      CompanyRating[]
+
+  supportTickets SupportTicket[]
+  supportMessages SupportMessage[]
+  supportRatings SupportRating[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  city      String?
+  state     String?
+  cnpj      String?  @unique
+  type      CompanyType @default(CONCESSION)
+  logoUrl   String?
+  overallScore Float?
+  solutionRate Int?
+  avgResponseMs Int?
+  status    CompanyStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  complaints Complaint[]
+  responses  CompanyResponse[]
+  metrics    CompanyMetric[]
+  ratings    CompanyRating[]
+  alerts     DataAlert[]
+  reports    ReportSnapshot[]
+  integrations Integration[]
+}
+
+model Complaint {
+  id            String          @id @default(cuid())
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  companyId     String
+
+  category      ComplaintCategory
+  subcategory   String?
+  issue         String
+  description   String
+  neighborhood  String?
+  street        String?
+  number        String?
+  locationLat   Float?
+  locationLng   Float?
+  locationLabel String?
+
+  status        ComplaintStatus @default(REGISTERED)
+  visibility    ComplaintVisibility @default(PUBLIC)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  resolvedAt    DateTime?
+
+  events        ComplaintEvent[]
+  responses     CompanyResponse[]
+  contestations Contestation[]
+  attachments   Attachment[]
+  moderation    ModerationAction[]
+  aiModerationSuggestions AiModerationSuggestion[]
+  ratings       CompanyRating[]
+  supportTickets SupportTicket[]
+  externalProtocols ExternalProtocol[]
+
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([visibility, createdAt])
+}
+
+model ComplaintEvent {
+  id          String             @id @default(cuid())
+  complaint   Complaint          @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId String
+  type        ComplaintEventType
+  message     String
+  createdAt   DateTime           @default(now())
+
+  @@index([complaintId, createdAt])
+}
+
+model CompanyResponse {
+  id          String    @id @default(cuid())
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  authorName  String?
+  message     String
+  status      CompanyResponseStatus @default(VISIBLE)
+  createdAt   DateTime  @default(now())
+
+  attachments ResponseAttachment[]
+  aiModerationSuggestions AiModerationSuggestion[]
+}
+
+model Contestation {
+  id          String    @id @default(cuid())
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  message     String
+  createdAt   DateTime  @default(now())
+}
+
+model Attachment {
+  id          String    @id @default(cuid())
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId String
+  type        AttachmentType @default(DOCUMENT)
+  url         String
+  filename    String
+  mimeType    String
+  size        Int
+  createdAt   DateTime  @default(now())
+}
+
+model SupportAttachment {
+  id        String       @id @default(cuid())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  url       String
+  filename  String
+  mimeType  String
+  size      Int
+  createdAt DateTime     @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model ResponseAttachment {
+  id         String         @id @default(cuid())
+  response   CompanyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  responseId String
+  type       AttachmentType @default(DOCUMENT)
+  url        String
+  filename   String
+  mimeType   String
+  size       Int
+  createdAt  DateTime       @default(now())
+
+  @@index([responseId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  actionUrl String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ModerationAction {
+  id            String              @id @default(cuid())
+  complaint     Complaint           @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId   String
+  moderator     User?               @relation("ModerationByUser", fields: [moderatorId], references: [id], onDelete: SetNull)
+  moderatorId   String?
+  aiSuggestion  AiModerationSuggestion? @relation("AiSuggestionModerationActions", fields: [aiSuggestionId], references: [id], onDelete: SetNull)
+  aiSuggestionId String?
+  action        ModerationActionType
+  reason        String?
+  details       String?
+  originalContent Json?
+  editedContent   Json?
+  moderatorIp   String?
+  createdAt     DateTime            @default(now())
+
+  @@index([complaintId, createdAt])
+  @@index([moderatorId, createdAt])
+  @@index([aiSuggestionId, createdAt])
+}
+
+model AiModerationSuggestion {
+  id            String                    @id @default(cuid())
+  target        AiModerationTarget
+
+  complaint     Complaint?                @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId   String?
+  response      CompanyResponse?          @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  responseId    String?
+
+  provider      String
+  model         String?
+  promptVersion String?
+
+  input         Json
+  output        Json
+
+  recommendedAction ModerationActionType?
+  recommendedEdits  Json?
+  score         Float?
+  explanation   Json?
+
+  status        AiModerationSuggestionStatus @default(PENDING_REVIEW)
+
+  reviewedBy    User?                     @relation("AiModerationReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedById  String?
+  reviewedAt    DateTime?
+
+  queueItem     AiModerationQueueItem?
+  feedback      AiModerationFeedback[]
+  moderationActions ModerationAction[] @relation("AiSuggestionModerationActions")
+
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([target, createdAt])
+  @@index([status, createdAt])
+  @@index([complaintId, createdAt])
+  @@index([responseId, createdAt])
+  @@index([reviewedById, reviewedAt])
+}
+
+model AiModerationQueueItem {
+  id           String                 @id @default(cuid())
+  suggestion   AiModerationSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  suggestionId String                 @unique
+
+  status       AiModerationQueueStatus @default(PENDING)
+  priority     Int                    @default(0)
+
+  assignedTo   User?                  @relation("AiModerationAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId String?
+
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([status, priority, createdAt])
+  @@index([assignedToId, status, createdAt])
+}
+
+model AiModerationFeedback {
+  id          String                    @id @default(cuid())
+  suggestion  AiModerationSuggestion    @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  suggestionId String
+
+  moderator   User?                     @relation("AiModerationFeedbackBy", fields: [moderatorId], references: [id], onDelete: SetNull)
+  moderatorId String?
+
+  outcome     AiModerationFeedbackOutcome
+  finalAction ModerationActionType?
+  notes       String?
+  createdAt   DateTime                  @default(now())
+
+  @@index([suggestionId, createdAt])
+  @@index([moderatorId, createdAt])
+}
+
+model CompanyMetric {
+  id                    String   @id @default(cuid())
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId             String
+  period                String
+  complaintsReceived    Int      @default(0)
+  complaintsReplied     Int      @default(0)
+  complaintsResolved    Int      @default(0)
+  avgResponseMs         Int?
+  averageScore          Float?
+  calculatedAt          DateTime @default(now())
+
+  @@unique([companyId, period])
+  @@index([companyId, calculatedAt])
+}
+
+model CompanyRating {
+  id          String   @id @default(cuid())
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId String
+  score       Int
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@unique([complaintId])
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
+  action        String
+  tableName     String
+  recordId      String
+  previousData  Json?
+  newData       Json?
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([tableName, recordId, createdAt])
+}
+
+model JobRun {
+  id         String       @id @default(cuid())
+  name       String
+  status     JobRunStatus @default(RUNNING)
+  period     String?
+  meta       Json?
+  error      String?
+  ip         String?
+  startedAt  DateTime     @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  updatedAt  DateTime     @updatedAt
+
+  user       User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId     String?
+  pipelineEvents PipelineEvent[]
+  pipelineSnapshots PipelineSnapshot[]
+
+  @@index([name, startedAt])
+  @@index([status, startedAt])
+  @@index([userId, startedAt])
+}
+
+model PipelineEvent {
+  id          String          @id @default(cuid())
+  run         JobRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId       String
+  dataset     PipelineDataset
+  action      String
+  period      String?
+  companyId   String?
+  city        String?
+  state       String?
+  inputMeta   Json?
+  output      Json?
+  previousHash String?
+  outputHash  String?
+  createdAt   DateTime        @default(now())
+
+  @@index([dataset, createdAt])
+  @@index([dataset, period, createdAt])
+  @@index([companyId, period, createdAt])
+  @@index([city, state, period, createdAt])
+  @@unique([runId, dataset, action, period, companyId, city, state])
+}
+
+model PipelineSnapshot {
+  id           String          @id @default(cuid())
+  run          JobRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId        String
+  dataset      PipelineDataset
+  period       String
+  companyId    String?
+  city         String?
+  state        String?
+  version      Int
+  previousHash String?
+  outputHash   String
+  payload      Json
+  changeSummary Json?
+  createdAt    DateTime        @default(now())
+
+  @@index([dataset, createdAt])
+  @@index([dataset, period, version])
+  @@index([companyId, period, version])
+  @@index([city, state, period, version])
+  @@unique([dataset, period, companyId, city, state, version])
+  @@unique([dataset, period, companyId, city, state, outputHash])
+}
+
+model AccessLog {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  code      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, code])
+}
+
+model FAQArticle {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  body      String
+  tags      String?
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model EmailOutbox {
+  id         String      @id @default(cuid())
+  to         String
+  subject    String
+  body       String
+  status     EmailStatus @default(PENDING)
+  error      String?
+  meta       Json?
+  integration   Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  integrationId String?
+  ticketId   String?
+  complaintId String?
+  userId     String?
+  createdAt  DateTime    @default(now())
+  sentAt     DateTime?
+
+  @@index([status, createdAt])
+  @@index([integrationId, createdAt])
+  @@index([ticketId, createdAt])
+  @@index([complaintId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model SupportTicket {
+  id               String              @id @default(cuid())
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  category         SupportTicketCategory
+  status           SupportTicketStatus @default(OPEN)
+  channel          SupportChannel      @default(IN_APP)
+  subject          String
+  complaint        Complaint?          @relation(fields: [complaintId], references: [id], onDelete: SetNull)
+  complaintId      String?
+  deviceModel      String?
+  appVersion       String?
+  firstStaffReplyAt DateTime?
+  firstReplySlaAlertedAt DateTime?
+  lastUserReminderAt DateTime?
+  closedAt         DateTime?
+  reopenCount      Int                 @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  messages         SupportMessage[]
+  attachments      SupportAttachment[]
+  rating           SupportRating?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([category, createdAt])
+}
+
+model SupportMessage {
+  id           String        @id @default(cuid())
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId     String
+  sender       User?         @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  senderUserId String?
+  senderRole   UserRole?
+  body         String
+  originalBody String?
+  flags        Json?
+  createdAt    DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([senderUserId, createdAt])
+}
+
+model SupportRating {
+  id        String        @id @default(cuid())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String        @unique
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  score     Int
+  comment   String?
+  createdAt DateTime      @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum DataAlertScope {
+  COMPANY
+  CITY
+  PUBLIC
+  INTERNAL
+}
+
+enum DataAlertType {
+  SPIKE
+  RECURRING
+  CONTAMINATION
+  PERFORMANCE_DROP
+}
+
+model DataAlert {
+  id          String         @id @default(cuid())
+  scope       DataAlertScope
+  type        DataAlertType
+  fingerprint String         @unique
+  title       String
+  message     String
+  severity    String?
+  meta        Json?
+  createdAt   DateTime       @default(now())
+  resolvedAt  DateTime?
+
+  company     Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String?
+  city        String?
+  state       String?
+
+  @@index([scope, createdAt])
+  @@index([companyId, createdAt])
+  @@index([city, state, createdAt])
+}
+
+model CityMetric {
+  id                String   @id @default(cuid())
+  city              String
+  state             String
+  period            String
+  complaintsTotal   Int      @default(0)
+  complaintsOpen    Int      @default(0)
+  complaintsReplied Int      @default(0)
+  complaintsResolved Int     @default(0)
+  recurringCount    Int      @default(0)
+  avgResponseMs     Int?
+  avgResolutionMs   Int?
+  solutionRate      Int?
+  byCategory        Json?
+  byNeighborhood    Json?
+  calculatedAt      DateTime @default(now())
+
+  @@unique([city, state, period])
+  @@index([city, state, calculatedAt])
+}
+
+enum ReportType {
+  COMPANY_MONTHLY
+  CITY_MONTHLY
+  REGIONAL_QUARTERLY
+  NATIONAL_ANNUAL
+  INSTITUTIONAL_MONTHLY
+  INSTITUTIONAL_QUARTERLY
+  INSTITUTIONAL_ANNUAL
+}
+
+enum ReportScope {
+  COMPANY
+  CITY
+  REGION
+  NATIONAL
+  PUBLIC
+}
+
+model ReportSnapshot {
+  id          String     @id @default(cuid())
+  type        ReportType
+  scope       ReportScope
+  period      String
+  payload     Json
+  generatedAt DateTime   @default(now())
+
+  company     Company?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String?
+  city        String?
+  state       String?
+
+  @@index([type, generatedAt])
+  @@index([companyId, generatedAt])
+  @@index([city, state, generatedAt])
+}
+
+enum DistributionFormat {
+  CSV
+  XLSX
+  JSON
+}
+
+enum DistributionDestination {
+  AUTO
+  OFFICIAL_EMAIL
+  WEBHOOK
+}
+
+enum DistributionFrequency {
+  AUTO
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+model DistributionProfile {
+  id           String                    @id @default(cuid())
+  integration  Integration               @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  integrationId String
+  reportType   ReportType
+  format       DistributionFormat
+  destination  DistributionDestination   @default(AUTO)
+  frequency    DistributionFrequency     @default(AUTO)
+  active       Boolean                   @default(true)
+  emailTo      String?
+  webhookUrl   String?
+  lastRunAt    DateTime?
+  lastRunPeriod String?
+  lastError    String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([integrationId, active])
+  @@index([reportType, active])
+}
+
+model AutomationRule {
+  id         String            @id @default(cuid())
+  name       String
+  enabled    Boolean           @default(true)
+  trigger    AutomationTrigger
+  priority   Int               @default(100)
+  conditions Json
+  actions    Json
+  lastRunAt  DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([trigger, enabled, priority])
+}
+
+model WebhookOutbox {
+  id        String        @id @default(cuid())
+  url       String
+  method    String        @default("POST")
+  headers   Json?
+  body      String
+  status    WebhookStatus @default(PENDING)
+  error     String?
+  createdAt DateTime      @default(now())
+  sentAt    DateTime?
+  meta      Json?
+  integration   Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  integrationId String?
+
+  @@index([status, createdAt])
+  @@index([integrationId, createdAt])
+}
+
+model Integration {
+  id        String            @id @default(cuid())
+  name      String
+  scope     IntegrationScope
+  kind      IntegrationKind
+  status    IntegrationStatus @default(PENDING_VERIFICATION)
+
+  company   Company?          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String?
+  city      String?
+  state     String?
+
+  webhookUrl     String?
+  webhookMethod  String?      @default("POST")
+  webhookHeaders Json?
+  signingSecretEnc String?
+
+  officialEmail       String?
+  emailVerifyTokenHash String?
+  verifiedAt          DateTime?
+
+  inboundTokenHash String?
+  lastUsedAt       DateTime?
+
+  externalProtocols ExternalProtocol[]
+  emailOutbox        EmailOutbox[]
+  webhookOutbox      WebhookOutbox[]
+  distributionProfiles DistributionProfile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, scope, kind, createdAt])
+  @@index([companyId, status])
+  @@index([city, state, status])
+}
+
+model ExternalProtocol {
+  id            String      @id @default(cuid())
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  integrationId String
+
+  complaint     Complaint   @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  complaintId   String
+
+  externalProtocol String
+  externalStatus   String?
+  lastSyncedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([integrationId, complaintId])
+  @@unique([integrationId, externalProtocol])
+  @@index([complaintId, updatedAt])
+}

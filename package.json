@@ -6,22 +6,52 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:api:run": "newman run ./postman/sane-plus.postman_collection.json -e ./postman/local.postman_environment.json",
+    "test:api": "npm run build && start-server-and-test \"next start -p 3100\" http://127.0.0.1:3100/ \"npm run test:api:run\"",
+    "qa": "npm run lint && npm run typecheck && npm run test && npm run test:api",
+    "loadtest": "node ./scripts/loadtest.mjs",
+    "stresstest": "node ./scripts/stresstest.mjs",
+    "seed:institutional": "prisma db execute --file ./scripts/seed-institutional.sql",
+    "seed:distribution": "prisma db execute --file ./scripts/seed-distribution-profiles.sql"
   },
   "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.5.0",
+    "@prisma/client": "^7.5.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.8.0",
+    "leaflet": "^1.9.4",
     "next": "16.2.1",
+    "prisma": "^7.5.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "swr": "^2.4.1",
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^3.2.4",
+    "autocannon": "^8.0.0",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "jsdom": "^26.1.0",
+    "newman": "^6.2.1",
+    "start-server-and-test": "^2.0.13",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

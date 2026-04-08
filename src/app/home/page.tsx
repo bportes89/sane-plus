@@ -1,0 +1,203 @@
+import Link from "next/link";
+import { Logo } from "@/components/Logo";
+import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { Card } from "@/components/Card";
+
+export default async function HomePage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/home&clear=1");
+
+  const complaints = await prisma.complaint.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    take: 4,
+    select: {
+      id: true,
+      issue: true,
+      status: true,
+      createdAt: true,
+      company: { select: { name: true } },
+    },
+  });
+
+  const topCompanies = await prisma.company.findMany({
+    take: 3,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      complaints: {
+        select: {
+          status: true,
+          createdAt: true,
+          responses: { select: { createdAt: true }, orderBy: { createdAt: "asc" } },
+        },
+      },
+    },
+  });
+
+  const rankingPreview = topCompanies.map((c) => {
+    const total = c.complaints.length;
+    const resolved = c.complaints.filter((x) => x.status === "RESOLVED").length;
+    const solutionRate = total ? Math.round((resolved / total) * 100) : 0;
+    const avgResponseMs = (() => {
+      const diffs = c.complaints
+        .filter((x) => x.responses.length > 0)
+        .map((x) => new Date(x.responses[0].createdAt).getTime() - new Date(x.createdAt).getTime());
+      if (diffs.length === 0) return null;
+      return Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length);
+    })();
+    return {
+      id: c.id,
+      name: c.name,
+      solutionRate,
+      avgResponseMs,
+    };
+  });
+
+  const statusLabel: Record<string, string> = {
+    REGISTERED: "Aberta",
+    NEEDS_REVIEW: "Em análise",
+    PUBLISHED: "Publicada",
+    COMPANY_REPLIED: "Respondida",
+    USER_CONTESTED: "Contestada",
+    RESOLVED: "Resolvida",
+    CLOSED: "Encerrada",
+  };
+
+  return (
+    <div className="min-h-dvh bg-background">
+      <header className="px-6 pt-6 flex items-center justify-between gap-4">
+        <Logo href="/home" />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/support"
+            className="inline-flex h-10 min-w-10 px-3 items-center justify-center rounded-2xl bg-white border border-black/5 hover:bg-muted transition-colors"
+            aria-label="Suporte"
+          >
+            <span className="text-primary font-title font-bold">?</span>
+          </Link>
+          <Link
+            href="/notifications"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white border border-black/5 hover:bg-muted transition-colors"
+            aria-label="Notificações"
+          >
+            <span className="text-primary font-title font-bold">!</span>
+          </Link>
+          <Link
+            href="/profile"
+            className="inline-flex h-10 min-w-10 px-3 items-center justify-center rounded-2xl bg-white border border-black/5 hover:bg-muted transition-colors"
+            aria-label="Perfil"
+          >
+            <span className="font-title font-semibold text-primary">
+              {(user.name?.trim()?.[0] ?? user.email?.trim()?.[0] ?? "U").toUpperCase()}
+            </span>
+          </Link>
+        </div>
+      </header>
+      <main className="px-6 py-10 space-y-8">
+        <div className="rounded-3xl bg-white border border-black/5 p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-sm text-foreground/70">Olá, {user.name ?? "cidadão"}.</div>
+              <div className="font-title font-bold text-xl text-foreground">
+                Vamos resolver isso juntos.
+              </div>
+            </div>
+            <Link href="/complaints/new" prefetch={false} className="inline-flex shrink-0">
+              <span className="inline-flex min-w-[210px] items-center justify-center rounded-xl font-title font-semibold h-11 px-4 text-base bg-accent text-white hover:bg-highlight active:bg-primary btn-glow">
+                Registrar Reclamação
+              </span>
+            </Link>
+          </div>
+        </div>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-title font-bold text-lg">Minhas Reclamações</h2>
+            <Link href="/complaints" className="text-sm text-primary hover:text-highlight">
+              Ver todas
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {complaints.length ? (
+              complaints.map((c) => (
+                <Link key={c.id} href={`/complaints/${c.id}`} className="block">
+                  <Card className="p-5 hover:bg-muted transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-title font-semibold">{c.issue}</div>
+                        <div className="text-sm text-foreground/70 mt-1">{c.company.name}</div>
+                      </div>
+                      <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-title font-semibold">
+                        {statusLabel[c.status] ?? c.status}
+                      </span>
+                    </div>
+                  </Card>
+                </Link>
+              ))
+            ) : (
+              <Card className="p-5">
+                <div className="text-sm text-foreground/70">
+                  Você ainda não registrou nenhuma reclamação.
+                </div>
+              </Card>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-title font-bold text-lg">Ranking das Empresas</h2>
+            <Link href="/ranking" className="text-sm text-primary hover:text-highlight">
+              Abrir ranking
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {rankingPreview.map((r) => (
+              <Card key={r.id} className="p-5">
+                <div className="font-title font-semibold">{r.name}</div>
+                <div className="mt-2 text-sm text-foreground/70">
+                  Nota SANE+: <span className="text-foreground font-title font-semibold">{r.solutionRate}</span>
+                </div>
+                <div className="text-xs text-foreground/60 mt-1">
+                  Taxa de solução: {r.solutionRate}%
+                </div>
+              </Card>
+            ))}
+            {!rankingPreview.length ? (
+              <Card className="p-5">
+                <div className="text-sm text-foreground/70">Sem dados ainda.</div>
+              </Card>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-title font-bold text-lg">Alertas</h2>
+            <Link href="/news" className="text-sm text-primary hover:text-highlight">
+              Ver todos
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <Card className="p-5">
+              <div className="font-title font-semibold">Manutenção programada</div>
+              <div className="text-sm text-foreground/70 mt-1">
+                Possível interrupção de água no bairro X.
+              </div>
+            </Card>
+            <Card className="p-5">
+              <div className="font-title font-semibold">Alto volume de reclamações</div>
+              <div className="text-sm text-foreground/70 mt-1">
+                Crescimento de relatos na região Y nas últimas 24h.
+              </div>
+            </Card>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
