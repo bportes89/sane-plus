@@ -5,6 +5,8 @@ import { Logo } from "@/components/Logo";
 import { computePublicDashboard } from "@/lib/analytics";
 import { RankingMapClient } from "@/app/ranking/RankingMapClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function TransparenciaPage() {
   const data = await computePublicDashboard(prisma, { windowDays: 30 });
   const top = data.topCompanies.slice(0, 10);

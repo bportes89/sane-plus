@@ -1,23 +1,35 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
-  prismaAdapter: PrismaBetterSqlite3 | undefined;
 };
 
-const url = process.env.DATABASE_URL ?? "file:./dev.db";
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL?.trim();
 
-const adapter =
-  globalForPrisma.prismaAdapter ?? new PrismaBetterSqlite3({ url });
+  if (!connectionString) {
+    throw new Error("DATABASE_URL não configurada.");
+  }
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    adapter,
-  });
+  const adapter = new PrismaPg({ connectionString });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-  globalForPrisma.prismaAdapter = adapter;
+  return new PrismaClient({ adapter });
 }
+
+function getPrismaClient() {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+
+  return globalForPrisma.prisma;
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property, receiver) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, property, receiver);
+
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
