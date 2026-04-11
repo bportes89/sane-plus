@@ -74,10 +74,11 @@ export default async function HomePage() {
         <div className="flex items-center gap-3">
           <Link
             href="/support"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#E7D7FF] bg-[#F5EEFF] text-[#5F3DC4] shadow-sm transition-colors hover:bg-[#EFE4FF]"
+            className="relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[1.25rem] border border-[#E7D7FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#F5EEFF_100%)] text-[#5F3DC4] shadow-[0_10px_24px_rgba(130,10,209,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(130,10,209,0.18)]"
             aria-label="Suporte"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <span className="absolute inset-x-2 top-0 h-5 rounded-full bg-white/70 blur-md" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="relative z-10">
               <path
                 d="M8 10.5h8M8 14h4.5M7 18.5h5l3.8 2.7c.4.3 1 .01 1-.49V18.5h.7A2.5 2.5 0 0 0 20 16V7.5A2.5 2.5 0 0 0 17.5 5h-11A2.5 2.5 0 0 0 4 7.5V16A2.5 2.5 0 0 0 6.5 18.5H7Z"
                 stroke="currentColor"
@@ -89,10 +90,12 @@ export default async function HomePage() {
           </Link>
           <Link
             href="/notifications"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#E7D7FF] bg-[#F5EEFF] text-[#5F3DC4] shadow-sm transition-colors hover:bg-[#EFE4FF]"
+            className="relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[1.25rem] border border-[#D8E3FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#EEF3FF_100%)] text-[#3F51C4] shadow-[0_10px_24px_rgba(95,61,196,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(95,61,196,0.18)]"
             aria-label="Notificações"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <span className="absolute inset-x-2 top-0 h-5 rounded-full bg-white/75 blur-md" />
+            <span className="absolute right-2.5 top-2.5 z-10 h-2.5 w-2.5 rounded-full bg-[#9B4DFF] ring-2 ring-white" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="relative z-10">
               <path
                 d="M12 4.75a4.25 4.25 0 0 1 4.25 4.25v1.16c0 .8.2 1.58.58 2.28l.74 1.36c.57 1.06-.2 2.37-1.4 2.37H7.83c-1.2 0-1.97-1.31-1.4-2.37l.74-1.36c.38-.7.58-1.48.58-2.28V9A4.25 4.25 0 0 1 12 4.75Z"
                 stroke="currentColor"
@@ -111,10 +114,12 @@ export default async function HomePage() {
           </Link>
           <Link
             href="/profile"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#E7D7FF] bg-[#F5EEFF] text-[#5F3DC4] shadow-sm transition-colors hover:bg-[#EFE4FF]"
+            className="relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[1.25rem] border border-[#E7D7FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#F7EFFF_100%)] text-[#820AD1] shadow-[0_10px_24px_rgba(130,10,209,0.14)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(130,10,209,0.2)]"
             aria-label="Perfil"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <span className="absolute inset-x-2 top-0 h-5 rounded-full bg-white/75 blur-md" />
+            <span className="absolute bottom-1.5 right-1.5 h-3.5 w-3.5 rounded-full border border-white bg-[#22C1A8]" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="relative z-10">
               <path
                 d="M12 12a3.75 3.75 0 1 0 0-7.5A3.75 3.75 0 0 0 12 12Z"
                 stroke="currentColor"
