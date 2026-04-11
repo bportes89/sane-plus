@@ -93,23 +93,23 @@ export default async function CompanyProfilePage({
         <Card className="mt-6 p-6">
           <div className="font-title font-bold text-2xl">{company.name}</div>
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div className="rounded-2xl bg-muted px-4 py-3">
-              <div className="text-foreground/70">Nota SANE+</div>
-              <div className="font-title font-semibold text-lg">{note}</div>
+            <div className="rounded-2xl border border-primary/10 bg-primary/[0.06] px-4 py-3 text-foreground">
+              <div className="text-highlight">Nota SANE+</div>
+              <div className="font-title font-semibold text-lg text-foreground">{note}</div>
             </div>
-            <div className="rounded-2xl bg-muted px-4 py-3">
-              <div className="text-foreground/70">Taxa de solução</div>
-              <div className="font-title font-semibold text-lg">{solutionRate}%</div>
+            <div className="rounded-2xl border border-primary/10 bg-primary/[0.06] px-4 py-3 text-foreground">
+              <div className="text-highlight">Taxa de solução</div>
+              <div className="font-title font-semibold text-lg text-foreground">{solutionRate}%</div>
             </div>
-            <div className="rounded-2xl bg-muted px-4 py-3">
-              <div className="text-foreground/70">Tempo médio de resposta</div>
-              <div className="font-title font-semibold text-lg">
+            <div className="rounded-2xl border border-primary/10 bg-primary/[0.06] px-4 py-3 text-foreground">
+              <div className="text-highlight">Tempo médio de resposta</div>
+              <div className="font-title font-semibold text-lg text-foreground">
                 {avgDays ? `${avgDays} dia${avgDays === 1 ? "" : "s"}` : "—"}
               </div>
             </div>
-            <div className="rounded-2xl bg-muted px-4 py-3">
-              <div className="text-foreground/70">Reclamações recentes</div>
-              <div className="font-title font-semibold text-lg">{total}</div>
+            <div className="rounded-2xl border border-primary/10 bg-primary/[0.06] px-4 py-3 text-foreground">
+              <div className="text-highlight">Reclamações recentes</div>
+              <div className="font-title font-semibold text-lg text-foreground">{total}</div>
             </div>
           </div>
         </Card>
