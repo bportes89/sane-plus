@@ -74,26 +74,62 @@ export default async function HomePage() {
         <div className="flex items-center gap-3">
           <Link
             href="/support"
-            className="inline-flex h-10 min-w-10 px-3 items-center justify-center rounded-2xl bg-white border border-black/5 hover:bg-muted transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#E7D7FF] bg-[#F5EEFF] text-[#5F3DC4] shadow-sm transition-colors hover:bg-[#EFE4FF]"
             aria-label="Suporte"
           >
-            <span className="text-primary font-title font-bold">?</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M8 10.5h8M8 14h4.5M7 18.5h5l3.8 2.7c.4.3 1 .01 1-.49V18.5h.7A2.5 2.5 0 0 0 20 16V7.5A2.5 2.5 0 0 0 17.5 5h-11A2.5 2.5 0 0 0 4 7.5V16A2.5 2.5 0 0 0 6.5 18.5H7Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </Link>
           <Link
             href="/notifications"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white border border-black/5 hover:bg-muted transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#E7D7FF] bg-[#F5EEFF] text-[#5F3DC4] shadow-sm transition-colors hover:bg-[#EFE4FF]"
             aria-label="Notificações"
           >
-            <span className="text-primary font-title font-bold">!</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 4.75a4.25 4.25 0 0 1 4.25 4.25v1.16c0 .8.2 1.58.58 2.28l.74 1.36c.57 1.06-.2 2.37-1.4 2.37H7.83c-1.2 0-1.97-1.31-1.4-2.37l.74-1.36c.38-.7.58-1.48.58-2.28V9A4.25 4.25 0 0 1 12 4.75Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M10 18.25a2.25 2.25 0 0 0 4 0"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </Link>
           <Link
             href="/profile"
-            className="inline-flex h-10 min-w-10 px-3 items-center justify-center rounded-2xl bg-white border border-black/5 hover:bg-muted transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#E7D7FF] bg-[#F5EEFF] text-[#5F3DC4] shadow-sm transition-colors hover:bg-[#EFE4FF]"
             aria-label="Perfil"
           >
-            <span className="font-title font-semibold text-primary">
-              {(user.name?.trim()?.[0] ?? user.email?.trim()?.[0] ?? "U").toUpperCase()}
-            </span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 12a3.75 3.75 0 1 0 0-7.5A3.75 3.75 0 0 0 12 12Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M5.5 19.25a6.5 6.5 0 0 1 13 0"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </Link>
         </div>
       </header>
