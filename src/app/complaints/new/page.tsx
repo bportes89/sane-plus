@@ -34,6 +34,9 @@ export default function NewComplaintPage() {
   const [error, setError] = useState<string | null>(null);
   const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [cepError, setCepError] = useState<string | null>(null);
+  const [detectedCity, setDetectedCity] = useState("");
+  const [detectedState, setDetectedState] = useState("");
+  const [detectedLabel, setDetectedLabel] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -101,6 +104,9 @@ export default function NewComplaintPage() {
     setCepError(null);
     if (digits.length !== 8) {
       setCepStatus("idle");
+      setDetectedCity("");
+      setDetectedState("");
+      setDetectedLabel("");
       if (cepTimerRef.current) window.clearTimeout(cepTimerRef.current);
       cepAbortRef.current?.abort();
       cepAbortRef.current = null;
@@ -120,6 +126,9 @@ export default function NewComplaintPage() {
           if (!res.ok) {
             setCepStatus("error");
             setCepError("Não foi possível encontrar esse CEP.");
+            setDetectedCity("");
+            setDetectedState("");
+            setDetectedLabel("");
             return;
           }
           const obj =
@@ -128,6 +137,9 @@ export default function NewComplaintPage() {
               : ({} as Record<string, unknown>);
           if (typeof obj.neighborhood === "string") setNeighborhood(obj.neighborhood);
           if (typeof obj.street === "string") setStreet(obj.street);
+          setDetectedCity(typeof obj.city === "string" ? obj.city : "");
+          setDetectedState(typeof obj.state === "string" ? obj.state : "");
+          setDetectedLabel(typeof obj.label === "string" ? obj.label : "");
           if (typeof obj.lat === "number" && typeof obj.lng === "number") {
             setPosition({ lat: obj.lat, lng: obj.lng });
             setLatText(String(obj.lat));
@@ -138,6 +150,9 @@ export default function NewComplaintPage() {
           if ((e as { name?: string } | null)?.name === "AbortError") return;
           setCepStatus("error");
           setCepError("Falha ao buscar CEP. Tente novamente.");
+          setDetectedCity("");
+          setDetectedState("");
+          setDetectedLabel("");
         }
       })();
     }, 350);
@@ -449,6 +464,17 @@ export default function NewComplaintPage() {
                   setLngText(String(p.lng));
                 }}
               />
+              {detectedCity || detectedState || detectedLabel ? (
+                <div className="rounded-2xl border border-[#E7D7FF] bg-[linear-gradient(135deg,rgba(130,10,209,0.08)_0%,rgba(179,136,255,0.10)_100%)] px-4 py-3 text-sm text-[#45207A]">
+                  <div className="font-title text-[11px] font-semibold uppercase tracking-[0.14em] text-[#820AD1]">
+                    Local detectado pelo CEP
+                  </div>
+                  <div className="mt-1 text-base font-semibold text-foreground">
+                    {[detectedCity, detectedState].filter(Boolean).join(" / ") || "Local identificado"}
+                  </div>
+                  {detectedLabel ? <div className="mt-1 text-sm text-foreground/75">{detectedLabel}</div> : null}
+                </div>
+              ) : null}
               <div id="map-help" className="text-xs text-foreground/70">
                 Você pode marcar no mapa ou digitar latitude/longitude.
               </div>
