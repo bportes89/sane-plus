@@ -112,6 +112,9 @@ export default function LandingPage() {
                     <Link href="/ranking" className="hover:text-white transition-colors">
                       Ranking
                     </Link>
+                    <Link href="/heatmap" className="hover:text-white transition-colors">
+                      Mapa de calor
+                    </Link>
                   </nav>
                   <div className="flex items-center gap-2">
                     <Link href={loginHref} className="inline-flex">
@@ -176,6 +179,9 @@ export default function LandingPage() {
                       </a>
                       <Link href="/ranking" className="hover:text-white transition-colors">
                         Ver ranking das empresas
+                      </Link>
+                      <Link href="/heatmap" className="hover:text-white transition-colors">
+                        Explorar mapa de calor
                       </Link>
                     </div>
                   </div>

@@ -87,7 +87,7 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/support"
                 className="relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[1.25rem] border border-[#E7D7FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#F5EEFF_100%)] text-[#5F3DC4] shadow-[0_10px_24px_rgba(130,10,209,0.12)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(130,10,209,0.18)]"
@@ -149,6 +149,36 @@ export default async function HomePage() {
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
+                  />
+                </svg>
+              </Link>
+              <Link
+                href="/heatmap"
+                className="relative inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-[1.25rem] border border-[#FFD8E1] bg-[linear-gradient(180deg,#FFFFFF_0%,#FFF0F5_100%)] text-[#D7263D] shadow-[0_10px_24px_rgba(215,38,61,0.14)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(215,38,61,0.2)]"
+                aria-label="Mapa de calor"
+              >
+                <span className="absolute inset-x-2 top-0 h-5 rounded-full bg-white/75 blur-md" />
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="relative z-10">
+                  <path
+                    d="M5.75 15.25a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5Z"
+                    fill="currentColor"
+                    fillOpacity="0.3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M18.25 10.75a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5Z"
+                    fill="currentColor"
+                    fillOpacity="0.24"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M14 18.75a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z"
+                    fill="currentColor"
+                    fillOpacity="0.38"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
                   />
                 </svg>
               </Link>
