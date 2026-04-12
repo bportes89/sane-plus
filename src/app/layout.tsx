@@ -3,6 +3,7 @@ import { Inter, Montserrat } from "next/font/google";
 import "./globals.css";
 import { A11yBootstrap } from "@/components/A11yBootstrap";
 import { BackButton } from "@/components/BackButton";
+import { HomeButton } from "@/components/HomeButton";
 
 const montserrat = Montserrat({
   variable: "--font-sane-title",
@@ -33,6 +34,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <A11yBootstrap />
+        <HomeButton />
         <BackButton className="fixed left-4 bottom-4 z-50" />
         <div id="conteudo" tabIndex={-1} className="flex-1">
           {children}
