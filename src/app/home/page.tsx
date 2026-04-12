@@ -236,6 +236,46 @@ export default async function HomePage() {
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
+            <h2 className="font-title font-bold text-lg">Mapa de Calor</h2>
+            <Link href="/heatmap" className="text-sm text-primary hover:text-highlight">
+              Abrir mapa
+            </Link>
+          </div>
+          <Link href="/heatmap" className="block">
+            <Card className="overflow-hidden border-[#E7D7FF] bg-[linear-gradient(135deg,rgba(130,10,209,0.08)_0%,rgba(95,61,196,0.10)_50%,rgba(215,38,61,0.08)_100%)] p-6 transition hover:bg-muted">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="max-w-2xl">
+                  <div className="inline-flex items-center rounded-full border border-[#E7D7FF] bg-white/80 px-3 py-1 text-[11px] font-title font-semibold uppercase tracking-[0.14em] text-[#820AD1]">
+                    Inteligência territorial
+                  </div>
+                  <div className="mt-3 font-title text-xl font-bold text-foreground">
+                    Visualize os focos mais críticos de reclamações no mapa.
+                  </div>
+                  <div className="mt-2 text-sm text-foreground/70">
+                    Identifique bairros com maior concentração, aplique filtros e acompanhe a pressão por região.
+                  </div>
+                </div>
+                <div className="grid min-w-[220px] grid-cols-3 gap-2">
+                  <div className="rounded-2xl bg-white/80 px-3 py-4 text-center shadow-sm">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-foreground/55">Camadas</div>
+                    <div className="mt-1 font-title text-lg font-bold text-[#5F3DC4]">Heat</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/80 px-3 py-4 text-center shadow-sm">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-foreground/55">Filtros</div>
+                    <div className="mt-1 font-title text-lg font-bold text-[#820AD1]">Cidade</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/80 px-3 py-4 text-center shadow-sm">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-foreground/55">Foco</div>
+                    <div className="mt-1 font-title text-lg font-bold text-[#D7263D]">Áreas</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </Link>
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
             <h2 className="font-title font-bold text-lg">Alertas</h2>
             <Link href="/news" className="text-sm text-primary hover:text-highlight">
               Ver todos
