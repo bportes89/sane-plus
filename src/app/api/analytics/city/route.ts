@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { getClientIp, rateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 import { UserRole } from "@/generated/prisma/client";
-import { computeCityDashboard, getWindowDays } from "@/lib/analytics";
+import { computeCityDashboard, getWindowDays, parsePeriod } from "@/lib/analytics";
 import { buildXlsxBuffer } from "@/lib/xlsx";
 
 function isStaff(role: UserRole) {
@@ -36,13 +36,16 @@ export async function GET(req: NextRequest) {
   if (!city || !state) return NextResponse.json({ error: "missing_city_state" }, { status: 400 });
 
   const windowDays = getWindowDays(url.searchParams.get("windowDays"), 30);
-  const data = await computeCityDashboard(prisma, { city, state, windowDays });
+  const rawPeriod = (url.searchParams.get("period") ?? "").trim();
+  const period = parsePeriod(rawPeriod) ? rawPeriod : null;
+  const data = await computeCityDashboard(prisma, { city, state, windowDays, period });
+  const filterToken = period ?? `${windowDays}d`;
 
   const format = (url.searchParams.get("format") ?? "").trim().toLowerCase();
   const table = (url.searchParams.get("table") ?? "summary").trim().toLowerCase();
 
   if (format === "xlsx" || format === "excel") {
-    const filename = `city_${city}_${state}_${windowDays}d_${table}.xlsx`.replaceAll(/\s+/g, "_");
+    const filename = `city_${city}_${state}_${filterToken}_${table}.xlsx`.replaceAll(/\s+/g, "_");
 
     if (table === "bycategory" || table === "categories") {
       const rows = Object.entries(data.byCategory)
@@ -80,8 +83,13 @@ export async function GET(req: NextRequest) {
         .map((r) => ({
           id: r.id,
           name: r.name,
+          city: r.city,
+          state: r.state,
+          period: data.period ?? "",
+          total: r.total,
+          resolved: r.resolved,
           solutionRate: r.solutionRate ?? "",
-          overallScore: r.overallScore ?? "",
+          saneIndex: r.saneIndex,
           avgResponseMs: r.avgResponseMs ?? "",
           status: r.status,
         }));
@@ -103,6 +111,7 @@ export async function GET(req: NextRequest) {
           {
             city: data.city,
             state: data.state,
+            period: data.period ?? "",
             windowDays: data.windowDays,
             total: data.total,
             open: data.open,
@@ -127,7 +136,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (format === "csv") {
-    const filename = `city_${city}_${state}_${windowDays}d_${table}.csv`.replaceAll(/\s+/g, "_");
+    const filename = `city_${city}_${state}_${filterToken}_${table}.csv`.replaceAll(/\s+/g, "_");
 
     if (table === "bycategory" || table === "categories") {
       const rows = Object.entries(data.byCategory).sort((a, b) => b[1] - a[1]);
@@ -158,13 +167,18 @@ export async function GET(req: NextRequest) {
     if (table === "companies" || table === "ranking") {
       const rows = [...data.companyRank].sort((a, b) => (b.solutionRate ?? -1) - (a.solutionRate ?? -1));
       const lines = [
-        "id,name,solutionRate,overallScore,avgResponseMs,status",
+        "id,name,city,state,period,total,resolved,solutionRate,saneIndex,avgResponseMs,status",
         ...rows.map((r) =>
           [
             csvEscape(r.id),
             csvEscape(r.name),
+            csvEscape(r.city),
+            csvEscape(r.state),
+            csvEscape(data.period ?? ""),
+            csvEscape(r.total),
+            csvEscape(r.resolved),
             csvEscape(r.solutionRate ?? ""),
-            csvEscape(r.overallScore ?? ""),
+            csvEscape(r.saneIndex),
             csvEscape(r.avgResponseMs ?? ""),
             csvEscape(r.status),
           ].join(","),
@@ -181,10 +195,11 @@ export async function GET(req: NextRequest) {
     }
 
     const lines = [
-      "city,state,windowDays,total,open,resolved,replied,contested,recurringCount,responseRate,solutionRate",
+      "city,state,period,windowDays,total,open,resolved,replied,contested,recurringCount,responseRate,solutionRate",
       [
         csvEscape(data.city),
         csvEscape(data.state),
+        csvEscape(data.period ?? ""),
         csvEscape(data.windowDays),
         csvEscape(data.total),
         csvEscape(data.open),

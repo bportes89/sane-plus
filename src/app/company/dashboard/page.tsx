@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/Card";
 import { Logo } from "@/components/Logo";
 import { ReportScope, ReportType, UserRole } from "@/generated/prisma/client";
-import { computeCompanyDashboard, getWindowDays } from "@/lib/analytics";
+import { computeCompanyDashboard, getWindowDays, parsePeriod, windowFromPeriod } from "@/lib/analytics";
 import { RankingMapClient } from "@/app/ranking/RankingMapClient";
 
 function fmtMs(ms: number | null) {
@@ -18,6 +18,23 @@ function fmtMs(ms: number | null) {
   if (h < 48) return `${h}h`;
   const d = Math.round(h / 24);
   return `${d}d`;
+}
+
+function buildPeriodOptions(total = 12, now = new Date()) {
+  return Array.from({ length: total }, (_, index) => {
+    const current = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
+    const value = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}`;
+    const label = current.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+    return { value, label: label.slice(0, 1).toUpperCase() + label.slice(1) };
+  });
+}
+
+function formatWindowLabel(period: string | null, windowDays: number) {
+  if (!period) return `Indicadores e padrões dos últimos ${windowDays} dias.`;
+  const window = windowFromPeriod(period);
+  if (!window) return `Indicadores e padrões dos últimos ${windowDays} dias.`;
+  const label = window.from.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+  return `Indicadores e padrões de ${label.slice(0, 1).toUpperCase() + label.slice(1)}.`;
 }
 
 export default async function CompanyDashboardPage(props: {
@@ -33,8 +50,11 @@ export default async function CompanyDashboardPage(props: {
       : props.searchParams?.windowDays,
     30,
   );
+  const rawPeriod = Array.isArray(props.searchParams?.period) ? props.searchParams?.period[0] : props.searchParams?.period;
+  const period = parsePeriod(String(rawPeriod ?? "").trim()) ? String(rawPeriod).trim() : null;
+  const periodOptions = buildPeriodOptions();
 
-  const data = await computeCompanyDashboard(prisma, { companyId: user.companyId, windowDays });
+  const data = await computeCompanyDashboard(prisma, { companyId: user.companyId, windowDays, period });
 
   const categoryRows = Object.entries(data.byCategory).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const neighborhoodRows = Object.entries(data.byNeighborhood).sort((a, b) => b[1] - a[1]).slice(0, 10);
@@ -66,13 +86,26 @@ export default async function CompanyDashboardPage(props: {
         <div className="w-full max-w-5xl mx-auto space-y-6">
           <div>
             <h1 className="font-title font-bold text-2xl">Dashboard Operacional</h1>
-            <div className="text-sm text-foreground/70 mt-1">
-              Indicadores e padrões dos últimos {data.windowDays} dias.
-            </div>
+            <div className="text-sm text-foreground/70 mt-1">{formatWindowLabel(data.period, data.windowDays)}</div>
           </div>
 
           <Card className="p-4">
-            <form className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+            <form className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3">
+              <div>
+                <div className="text-xs text-foreground/60 mb-1">Período</div>
+                <select
+                  name="period"
+                  defaultValue={data.period ?? ""}
+                  className="h-10 w-full rounded-xl border border-black/10 bg-white px-3 outline-none ring-offset-2 transition focus:ring-2 focus:ring-secondary"
+                >
+                  <option value="">Últimos {data.windowDays} dias</option>
+                  {periodOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <div className="text-xs text-foreground/60 mb-1">Janela</div>
                 <select
@@ -86,6 +119,7 @@ export default async function CompanyDashboardPage(props: {
                   <option value="60">60 dias</option>
                   <option value="90">90 dias</option>
                 </select>
+                <div className="mt-1 text-[11px] text-foreground/60">A janela é usada quando nenhum mês é selecionado.</div>
               </div>
               <div className="flex items-end gap-3">
                 <button

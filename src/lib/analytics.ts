@@ -56,6 +56,29 @@ export function windowFromPeriod(period: string): Window | null {
   return { from, to };
 }
 
+function resolveWindow(
+  opts: { windowDays?: number; period?: string | null; now?: Date },
+  fallbackDays: number,
+) {
+  const normalizedPeriod = typeof opts.period === "string" ? opts.period.trim() : "";
+  if (normalizedPeriod) {
+    const window = windowFromPeriod(normalizedPeriod);
+    if (window) {
+      return {
+        from: window.from,
+        to: window.to,
+        period: normalizedPeriod,
+        windowDays: Math.max(1, Math.round((window.to.getTime() - window.from.getTime()) / (24 * 60 * 60 * 1000))),
+      };
+    }
+  }
+
+  const now = opts.now ?? new Date();
+  const windowDays = clampInt(opts.windowDays ?? fallbackDays, 1, 365);
+  const window = windowFromDays(windowDays, now);
+  return { from: window.from, to: window.to, period: null, windowDays };
+}
+
 export function quarterWindow(year: number, quarter: number): Window | null {
   const q = clampInt(quarter, 1, 4);
   const startMonth = (q - 1) * 3;
@@ -83,10 +106,9 @@ function countRecord(items: Array<{ key: string; value: number }>) {
 
 export async function computeCompanyDashboard(
   prisma: PrismaClient,
-  opts: { companyId: string; windowDays: number; now?: Date },
+  opts: { companyId: string; windowDays?: number; period?: string | null; now?: Date },
 ) {
-  const now = opts.now ?? new Date();
-  const window = windowFromDays(opts.windowDays, now);
+  const window = resolveWindow(opts, 30);
   const whereBase = { companyId: opts.companyId, createdAt: { gte: window.from, lte: window.to } };
 
   const [total, open, resolved, replied, contested, ratingAvg] = await prisma.$transaction([
@@ -193,7 +215,8 @@ export async function computeCompanyDashboard(
   const solutionRate = total ? Math.round((resolved / total) * 100) : 0;
 
   return {
-    windowDays: opts.windowDays,
+    period: window.period,
+    windowDays: window.windowDays,
     total,
     open,
     resolved,
@@ -212,10 +235,9 @@ export async function computeCompanyDashboard(
 
 export async function computeCityDashboard(
   prisma: PrismaClient,
-  opts: { city: string; state: string; windowDays: number; now?: Date },
+  opts: { city: string; state: string; windowDays?: number; period?: string | null; now?: Date },
 ) {
-  const now = opts.now ?? new Date();
-  const window = windowFromDays(opts.windowDays, now);
+  const window = resolveWindow(opts, 30);
   const whereBase = {
     createdAt: { gte: window.from, lte: window.to },
     company: { is: { city: opts.city, state: opts.state } },
@@ -251,19 +273,62 @@ export async function computeCityDashboard(
       .map((r) => ({ key: r.neighborhood ?? "", value: r._count })),
   );
 
-  const companyRank = await prisma.company.findMany({
-    where: { city: opts.city, state: opts.state },
+  const companyRankSource = await prisma.company.findMany({
+    where: { city: opts.city, state: opts.state, status: "ACTIVE" },
     select: {
       id: true,
       name: true,
-      overallScore: true,
-      solutionRate: true,
-      avgResponseMs: true,
+      slug: true,
+      city: true,
+      state: true,
+      logoUrl: true,
       status: true,
+      complaints: {
+        where: { createdAt: { gte: window.from, lte: window.to } },
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          responses: { select: { createdAt: true }, orderBy: { createdAt: "asc" } },
+        },
+      },
     },
-    orderBy: [{ solutionRate: "desc" }, { overallScore: "desc" }, { name: "asc" }],
-    take: 20,
   });
+  const companyRank = companyRankSource
+    .map((company) => {
+      const totalComplaints = company.complaints.length;
+      const resolvedComplaints = company.complaints.filter((item) => item.status === ComplaintStatus.RESOLVED).length;
+      const respondedComplaints = company.complaints.filter((item) => item.responses.length > 0);
+      const avgResponseMs =
+        respondedComplaints.length > 0
+          ? Math.round(
+              respondedComplaints
+                .map((item) => item.responses[0]!.createdAt.getTime() - item.createdAt.getTime())
+                .reduce((sum, value) => sum + value, 0) / respondedComplaints.length,
+            )
+          : null;
+      const solutionRate = totalComplaints ? Math.round((resolvedComplaints / totalComplaints) * 100) : 0;
+      const saneIndex =
+        solutionRate +
+        (avgResponseMs != null ? Math.max(0, 100 - Math.round(avgResponseMs / 360000)) : 50);
+
+      return {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        city: company.city,
+        state: company.state,
+        logoUrl: company.logoUrl,
+        status: company.status,
+        total: totalComplaints,
+        resolved: resolvedComplaints,
+        solutionRate,
+        avgResponseMs,
+        saneIndex,
+      };
+    })
+    .filter((company) => company.total > 0)
+    .sort((a, b) => b.saneIndex - a.saneIndex || b.solutionRate - a.solutionRate || a.name.localeCompare(b.name));
 
   const recurringCount = await prisma.complaint
     .findMany({
@@ -287,7 +352,8 @@ export async function computeCityDashboard(
     });
 
   return {
-    windowDays: opts.windowDays,
+    period: window.period,
+    windowDays: window.windowDays,
     city: opts.city,
     state: opts.state,
     total,
@@ -318,15 +384,15 @@ function avgDurationMs(rows: Array<{ createdAt: Date; sentAt: Date | null }>) {
 export async function computeInstitutionalDeliveryMetrics(
   prisma: PrismaClient,
   opts: {
-    windowDays: number;
+    windowDays?: number;
+    period?: string | null;
     city?: string | null;
     state?: string | null;
     companyId?: string | null;
     now?: Date;
   },
 ) {
-  const now = opts.now ?? new Date();
-  const window = windowFromDays(opts.windowDays, now);
+  const window = resolveWindow(opts, 30);
 
   const integrationFilter: Record<string, string> = {};
   if (opts.companyId) integrationFilter.companyId = opts.companyId;
@@ -418,7 +484,8 @@ export async function computeInstitutionalDeliveryMetrics(
   const webhookAttempts = webhookSent + webhookFailed;
 
   return {
-    windowDays: opts.windowDays,
+    period: window.period,
+    windowDays: window.windowDays,
     from: window.from,
     to: window.to,
     filters: {
@@ -447,10 +514,9 @@ export async function computeInstitutionalDeliveryMetrics(
 
 export async function computePublicDashboard(
   prisma: PrismaClient,
-  opts: { windowDays: number; now?: Date },
+  opts: { windowDays?: number; period?: string | null; now?: Date },
 ) {
-  const now = opts.now ?? new Date();
-  const window = windowFromDays(opts.windowDays, now);
+  const window = resolveWindow(opts, 30);
   const publicStatuses: ComplaintStatus[] = [
     ComplaintStatus.PUBLISHED,
     ComplaintStatus.COMPANY_REPLIED,
@@ -477,25 +543,68 @@ export async function computePublicDashboard(
   });
   const byCategory = countRecord(byCategoryRaw.map((r) => ({ key: r.category, value: r._count })));
 
-  const topCompanies = await prisma.company.findMany({
+  const topCompaniesSource = await prisma.company.findMany({
     where: { status: "ACTIVE" },
-    orderBy: [{ solutionRate: "desc" }, { overallScore: "desc" }, { name: "asc" }],
-    take: 10,
     select: {
       id: true,
       name: true,
       slug: true,
       city: true,
       state: true,
-      overallScore: true,
-      solutionRate: true,
-      avgResponseMs: true,
       logoUrl: true,
+      complaints: {
+        where: {
+          createdAt: { gte: window.from, lte: window.to },
+          visibility: { in: [ComplaintVisibility.PUBLIC, ComplaintVisibility.ANONYMIZED] },
+          status: { in: publicStatuses },
+        },
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          responses: { select: { createdAt: true }, orderBy: { createdAt: "asc" } },
+        },
+      },
     },
   });
+  const topCompanies = topCompaniesSource
+    .map((company) => {
+      const totalComplaints = company.complaints.length;
+      const resolvedComplaints = company.complaints.filter((item) => item.status === ComplaintStatus.RESOLVED).length;
+      const respondedComplaints = company.complaints.filter((item) => item.responses.length > 0);
+      const avgResponseMs =
+        respondedComplaints.length > 0
+          ? Math.round(
+              respondedComplaints
+                .map((item) => item.responses[0]!.createdAt.getTime() - item.createdAt.getTime())
+                .reduce((sum, value) => sum + value, 0) / respondedComplaints.length,
+            )
+          : null;
+      const solutionRate = totalComplaints ? Math.round((resolvedComplaints / totalComplaints) * 100) : 0;
+      const saneIndex =
+        solutionRate +
+        (avgResponseMs != null ? Math.max(0, 100 - Math.round(avgResponseMs / 360000)) : 50);
+
+      return {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        city: company.city,
+        state: company.state,
+        logoUrl: company.logoUrl,
+        total: totalComplaints,
+        resolved: resolvedComplaints,
+        solutionRate,
+        avgResponseMs,
+        saneIndex,
+      };
+    })
+    .filter((company) => company.total > 0)
+    .sort((a, b) => b.saneIndex - a.saneIndex || b.solutionRate - a.solutionRate || a.name.localeCompare(b.name));
 
   return {
-    windowDays: opts.windowDays,
+    period: window.period,
+    windowDays: window.windowDays,
     total,
     resolved,
     replied,

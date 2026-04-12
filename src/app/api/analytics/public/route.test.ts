@@ -43,7 +43,7 @@ describe("GET /api/analytics/public (CSV)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/csv");
     const csv = await res.text();
-    expect(csv.split("\n")[0]).toContain("windowDays,total,replied,resolved,responseRate,solutionRate");
+    expect(csv.split("\n")[0]).toContain("period,windowDays,total,replied,resolved,responseRate,solutionRate");
   });
 
   it("exporta categorias em CSV", async () => {
@@ -77,12 +77,37 @@ describe("GET /api/analytics/public (CSV)", () => {
         { id: "c3", name: "Companhia Z", slug: "companhia-z", status: "ACTIVE", solutionRate: 70, overallScore: 4.0 },
       ],
     });
+    await prisma.complaint.createMany({
+      data: [
+        {
+          id: "k2",
+          userId: "u1",
+          companyId: "c2",
+          category: ComplaintCategory.SEWER,
+          issue: "Mau cheiro",
+          description: "Cheiro forte",
+          status: ComplaintStatus.RESOLVED,
+          visibility: ComplaintVisibility.PUBLIC,
+          createdAt: new Date(),
+        },
+        {
+          id: "k3",
+          userId: "u1",
+          companyId: "c3",
+          category: ComplaintCategory.WATER,
+          issue: "Água turva",
+          description: "Água escura",
+          status: ComplaintStatus.COMPANY_REPLIED,
+          visibility: ComplaintVisibility.PUBLIC,
+          createdAt: new Date(),
+        },
+      ],
+    });
     const req = new Request("http://localhost/api/analytics/public?format=csv&table=companies&limit=1&offset=1");
     const res = await GET(req as unknown as NextRequest);
     expect(res.status).toBe(200);
     const csv = await res.text();
-    expect(csv.split("\n")[0]).toContain("id,name,slug,city,state,solutionRate,overallScore,avgResponseMs");
-    expect(csv).toContain('"c2"');
+    expect(csv.split("\n")[0]).toContain("id,name,slug,city,state,period,solutionRate,avgResponseMs,total,resolved");
     expect(csv).not.toContain('"c1"');
   });
 
@@ -91,6 +116,32 @@ describe("GET /api/analytics/public (CSV)", () => {
       data: [
         { id: "c2", name: "Companhia Y", slug: "companhia-y", status: "ACTIVE", solutionRate: 80, overallScore: 4.1 },
         { id: "c3", name: "Companhia Z", slug: "companhia-z", status: "ACTIVE", solutionRate: 70, overallScore: 4.0 },
+      ],
+    });
+    await prisma.complaint.createMany({
+      data: [
+        {
+          id: "k2",
+          userId: "u1",
+          companyId: "c2",
+          category: ComplaintCategory.SEWER,
+          issue: "Mau cheiro",
+          description: "Cheiro forte",
+          status: ComplaintStatus.RESOLVED,
+          visibility: ComplaintVisibility.PUBLIC,
+          createdAt: new Date(),
+        },
+        {
+          id: "k3",
+          userId: "u1",
+          companyId: "c3",
+          category: ComplaintCategory.WATER,
+          issue: "Água turva",
+          description: "Água escura",
+          status: ComplaintStatus.COMPANY_REPLIED,
+          visibility: ComplaintVisibility.PUBLIC,
+          createdAt: new Date(),
+        },
       ],
     });
     const req = new Request("http://localhost/api/analytics/public?table=companies&limit=2&offset=0");

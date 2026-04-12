@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, rateLimit, rateLimitHeaders } from "@/lib/rateLimit";
-import { computePublicDashboard, getWindowDays } from "@/lib/analytics";
+import { computePublicDashboard, getWindowDays, parsePeriod } from "@/lib/analytics";
 import { buildXlsxBuffer } from "@/lib/xlsx";
 
 function csvEscape(value: unknown) {
@@ -23,44 +23,32 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const windowDays = getWindowDays(url.searchParams.get("windowDays"), 30);
+  const rawPeriod = (url.searchParams.get("period") ?? "").trim();
+  const period = parsePeriod(rawPeriod) ? rawPeriod : null;
   const format = (url.searchParams.get("format") ?? "").trim().toLowerCase();
   const table = (url.searchParams.get("table") ?? "summary").trim().toLowerCase();
+  const filterToken = period ?? `${windowDays}d`;
+  const data = await computePublicDashboard(prisma, { windowDays, period });
 
   if (table === "companies" || table === "ranking") {
     const limit = Math.max(1, Math.min(200, Number.parseInt(url.searchParams.get("limit") ?? "10", 10) || 10));
     const offset = Math.max(0, Math.min(100_000, Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0));
-
-    const [total, companies] = await prisma.$transaction([
-      prisma.company.count({ where: { status: "ACTIVE" } }),
-      prisma.company.findMany({
-        where: { status: "ACTIVE" },
-        orderBy: [{ solutionRate: "desc" }, { overallScore: "desc" }, { name: "asc" }],
-        take: limit,
-        skip: offset,
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          city: true,
-          state: true,
-          overallScore: true,
-          solutionRate: true,
-          avgResponseMs: true,
-        },
-      }),
-    ]);
+    const total = data.topCompanies.length;
+    const companies = data.topCompanies.slice(offset, offset + limit);
 
     if (format === "xlsx" || format === "excel") {
-      const filename = `public_${windowDays}d_${table}_${limit}l_${offset}o.xlsx`.replaceAll(/\s+/g, "_");
+      const filename = `public_${filterToken}_${table}_${limit}l_${offset}o.xlsx`.replaceAll(/\s+/g, "_");
       const rows = companies.map((c) => ({
         id: c.id,
         name: c.name,
         slug: c.slug,
         city: c.city ?? "",
         state: c.state ?? "",
+        period: data.period ?? "",
         solutionRate: c.solutionRate ?? "",
-        overallScore: c.overallScore ?? "",
         avgResponseMs: c.avgResponseMs ?? "",
+        total: c.total,
+        resolved: c.resolved,
       }));
       const buf = buildXlsxBuffer([{ name: "Empresas", rows }]);
       return new NextResponse(buf, {
@@ -74,9 +62,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (format === "csv") {
-      const filename = `public_${windowDays}d_${table}_${limit}l_${offset}o.csv`.replaceAll(/\s+/g, "_");
+      const filename = `public_${filterToken}_${table}_${limit}l_${offset}o.csv`.replaceAll(/\s+/g, "_");
       const lines = [
-        "id,name,slug,city,state,solutionRate,overallScore,avgResponseMs",
+        "id,name,slug,city,state,period,solutionRate,avgResponseMs,total,resolved",
         ...companies.map((c) =>
           [
             csvEscape(c.id),
@@ -84,9 +72,11 @@ export async function GET(req: NextRequest) {
             csvEscape(c.slug),
             csvEscape(c.city ?? ""),
             csvEscape(c.state ?? ""),
+            csvEscape(data.period ?? ""),
             csvEscape(c.solutionRate ?? ""),
-            csvEscape(c.overallScore ?? ""),
             csvEscape(c.avgResponseMs ?? ""),
+            csvEscape(c.total),
+            csvEscape(c.resolved),
           ].join(","),
         ),
       ].join("\n");
@@ -102,6 +92,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
+        period: data.period,
         windowDays,
         limit,
         offset,
@@ -112,10 +103,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const data = await computePublicDashboard(prisma, { windowDays });
-
   if (format === "xlsx" || format === "excel") {
-    const filename = `public_${windowDays}d_${table}.xlsx`.replaceAll(/\s+/g, "_");
+    const filename = `public_${filterToken}_${table}.xlsx`.replaceAll(/\s+/g, "_");
 
     if (table === "bycategory" || table === "categories") {
       const rows = Object.entries(data.byCategory)
@@ -137,6 +126,7 @@ export async function GET(req: NextRequest) {
         name: "Resumo",
         rows: [
           {
+            period: data.period ?? "",
             windowDays: data.windowDays,
             total: data.total,
             replied: data.replied,
@@ -158,7 +148,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (format === "csv") {
-    const filename = `public_${windowDays}d_${table}.csv`.replaceAll(/\s+/g, "_");
+    const filename = `public_${filterToken}_${table}.csv`.replaceAll(/\s+/g, "_");
 
     if (table === "bycategory" || table === "categories") {
       const rows = Object.entries(data.byCategory).sort((a, b) => b[1] - a[1]);
@@ -174,8 +164,9 @@ export async function GET(req: NextRequest) {
     }
 
     const lines = [
-      "windowDays,total,replied,resolved,responseRate,solutionRate",
+      "period,windowDays,total,replied,resolved,responseRate,solutionRate",
       [
+        csvEscape(data.period ?? ""),
         csvEscape(data.windowDays),
         csvEscape(data.total),
         csvEscape(data.replied),

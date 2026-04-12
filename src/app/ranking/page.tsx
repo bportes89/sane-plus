@@ -2,13 +2,42 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Card } from "@/components/Card";
 import { RankingMapClient } from "./RankingMapClient";
+import { getWindowDays, parsePeriod, windowFromDays, windowFromPeriod } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
-export default async function RankingPage() {
+function buildPeriodOptions(total = 12, now = new Date()) {
+  return Array.from({ length: total }, (_, index) => {
+    const current = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
+    const value = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}`;
+    const label = current.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+    return { value, label: label.slice(0, 1).toUpperCase() + label.slice(1) };
+  });
+}
+
+function resolveWindowLabel(period: string | null, windowDays: number) {
+  if (!period) return `Últimos ${windowDays} dias`;
+  const window = windowFromPeriod(period);
+  if (!window) return `Últimos ${windowDays} dias`;
+  const label = window.from.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+  return label.slice(0, 1).toUpperCase() + label.slice(1);
+}
+
+export default async function RankingPage(props: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const rawPeriod = Array.isArray(props.searchParams?.period) ? props.searchParams?.period[0] : props.searchParams?.period;
+  const rawWindowDays = Array.isArray(props.searchParams?.windowDays)
+    ? props.searchParams?.windowDays[0]
+    : props.searchParams?.windowDays;
+  const period = parsePeriod(String(rawPeriod ?? "").trim()) ? String(rawPeriod).trim() : null;
+  const windowDays = getWindowDays(rawWindowDays, 30);
+  const selectedWindow = (period ? windowFromPeriod(period) : null) ?? windowFromDays(windowDays, new Date());
+  const periodOptions = buildPeriodOptions();
   const companies = await prisma.company.findMany({
     include: {
       complaints: {
+        where: { createdAt: { gte: selectedWindow.from, lte: selectedWindow.to } },
         select: {
           id: true,
           status: true,
@@ -24,9 +53,6 @@ export default async function RankingPage() {
     const total = c.complaints.length;
     const resolved = c.complaints.filter((x) => x.status === "RESOLVED").length;
     const notResponded = c.complaints.filter((x) => x.responses.length === 0).length;
-    const last30 = c.complaints.filter(
-      (x) => Date.now() - new Date(x.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000,
-    ).length;
 
     const avgResponseMs = (() => {
       const diffs = c.complaints
@@ -51,7 +77,6 @@ export default async function RankingPage() {
       total,
       resolved,
       notResponded,
-      last30,
       solutionRate,
       avgResponseMs,
       saneIndex,
@@ -74,6 +99,35 @@ export default async function RankingPage() {
           </Link>
         </div>
 
+        <Card className="mt-4 p-4">
+          <form className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3">
+            <div>
+              <div className="text-xs text-foreground/60 mb-1">Período</div>
+              <select
+                name="period"
+                aria-label="Período do ranking"
+                defaultValue={period ?? ""}
+                className="h-10 w-full rounded-xl border border-black/10 bg-white px-3 outline-none ring-offset-2 transition focus:ring-2 focus:ring-secondary"
+              >
+                <option value="">Últimos {windowDays} dias</option>
+                {periodOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-primary px-4 font-title font-semibold text-white transition hover:opacity-90"
+              >
+                Aplicar filtro
+              </button>
+            </div>
+          </form>
+        </Card>
+
         <RankingMapClient />
 
         <div className="mt-5 grid gap-3">
@@ -93,7 +147,9 @@ export default async function RankingPage() {
                       </div>
                     </div>
                     <div className="text-right text-xs text-foreground/60">
+                      <div>Período: {resolveWindowLabel(period, windowDays)}</div>
                       <div>Taxa de solução: {r.solutionRate}%</div>
+                      <div>Sem resposta: {r.notResponded}</div>
                       <div>Tempo médio: {formatAvg(r.avgResponseMs)}</div>
                     </div>
                   </div>

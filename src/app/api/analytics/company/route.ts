@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { getClientIp, rateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 import { UserRole } from "@/generated/prisma/client";
-import { computeCompanyDashboard, getWindowDays } from "@/lib/analytics";
+import { computeCompanyDashboard, getWindowDays, parsePeriod } from "@/lib/analytics";
 
 export async function GET(req: NextRequest) {
   const user = await requireUser();
@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const windowDays = getWindowDays(url.searchParams.get("windowDays"), 30);
-  const data = await computeCompanyDashboard(prisma, { companyId: user.companyId, windowDays });
+  const rawPeriod = (url.searchParams.get("period") ?? "").trim();
+  const period = parsePeriod(rawPeriod) ? rawPeriod : null;
+  const data = await computeCompanyDashboard(prisma, { companyId: user.companyId, windowDays, period });
   return NextResponse.json(data);
 }
-

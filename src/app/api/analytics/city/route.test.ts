@@ -50,7 +50,7 @@ describe("GET /api/analytics/city (CSV)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/csv");
     const csv = await res.text();
-    expect(csv.split("\n")[0]).toContain("city,state,windowDays,total,open,resolved");
+    expect(csv.split("\n")[0]).toContain("city,state,period,windowDays,total,open,resolved");
   });
 
   it("exporta categorias em CSV", async () => {

@@ -138,7 +138,7 @@ export default function LandingPage() {
                     MVP funcional • Reclamação → resposta → acompanhamento → finalização
                   </div>
                   <h1 className="mt-6 text-gradient font-title font-bold text-4xl sm:text-6xl leading-[1.04] neon-heading">
-                    SANE+ transforma reclamações em dados, pressão e solução.
+                    SANE+ transforma reclamações em dados, apoio e solução.
                   </h1>
                   <div className="mt-5 text-white/85 text-sm sm:text-base leading-7 max-w-xl">
                     Uma plataforma estilo “Reclame Aqui”, focada em saneamento: fluxo completo, moderação, reputação das empresas e possibilidade de georreferenciamento.

@@ -5,7 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/Card";
 import { Logo } from "@/components/Logo";
 import { UserRole } from "@/generated/prisma/client";
-import { computeCityDashboard, computeInstitutionalDeliveryMetrics, getWindowDays } from "@/lib/analytics";
+import {
+  computeCityDashboard,
+  computeInstitutionalDeliveryMetrics,
+  getWindowDays,
+  parsePeriod,
+  windowFromPeriod,
+} from "@/lib/analytics";
 import { RankingMapClient } from "@/app/ranking/RankingMapClient";
 
 function isStaff(role: UserRole) {
@@ -22,6 +28,23 @@ function formatDuration(ms: number | null) {
   return `${h}h`;
 }
 
+function buildPeriodOptions(total = 12, now = new Date()) {
+  return Array.from({ length: total }, (_, index) => {
+    const current = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
+    const value = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}`;
+    const label = current.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+    return { value, label: label.slice(0, 1).toUpperCase() + label.slice(1) };
+  });
+}
+
+function formatWindowLabel(period: string | null, windowDays: number) {
+  if (!period) return `Indicadores por cidade e mapa de calor dos últimos ${windowDays} dias.`;
+  const window = windowFromPeriod(period);
+  if (!window) return `Indicadores por cidade e mapa de calor dos últimos ${windowDays} dias.`;
+  const label = window.from.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+  return `Indicadores por cidade e mapa de calor de ${label.slice(0, 1).toUpperCase() + label.slice(1)}.`;
+}
+
 export default async function PrefeituraDashboardPage(props: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
@@ -35,6 +58,9 @@ export default async function PrefeituraDashboardPage(props: {
       : props.searchParams?.windowDays,
     30,
   );
+  const rawPeriod = Array.isArray(props.searchParams?.period) ? props.searchParams?.period[0] : props.searchParams?.period;
+  const period = parsePeriod(String(rawPeriod ?? "").trim()) ? String(rawPeriod).trim() : null;
+  const periodOptions = buildPeriodOptions();
 
   const cityParam = Array.isArray(props.searchParams?.city) ? props.searchParams?.city[0] : props.searchParams?.city;
   const stateParam = Array.isArray(props.searchParams?.state)
@@ -47,7 +73,7 @@ export default async function PrefeituraDashboardPage(props: {
   const state = String(stateParam ?? user.state ?? "").trim();
   const company = String(companyParam ?? "").trim();
 
-  const data = city && state ? await computeCityDashboard(prisma, { city, state, windowDays }) : null;
+  const data = city && state ? await computeCityDashboard(prisma, { city, state, windowDays, period }) : null;
   const companyRow = company
     ? await prisma.company.findFirst({
         where: { OR: [{ id: company }, { slug: company }] },
@@ -56,15 +82,20 @@ export default async function PrefeituraDashboardPage(props: {
     : null;
   const delivery = await computeInstitutionalDeliveryMetrics(prisma, {
     windowDays,
+    period,
     city: city || null,
     state: state || null,
     companyId: companyRow?.id ?? null,
   });
   const cityCsvBase = data
-    ? `/api/analytics/city?format=csv&city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&windowDays=${windowDays}`
+    ? `/api/analytics/city?format=csv&city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&${
+        data.period ? `period=${encodeURIComponent(data.period)}` : `windowDays=${data.windowDays}`
+      }`
     : "";
   const cityXlsxBase = data
-    ? `/api/analytics/city?format=xlsx&city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&windowDays=${windowDays}`
+    ? `/api/analytics/city?format=xlsx&city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&${
+        data.period ? `period=${encodeURIComponent(data.period)}` : `windowDays=${data.windowDays}`
+      }`
     : "";
   const cityMetricsCsv = data
     ? `/api/cities/metrics?format=csv&city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&limit=24`
@@ -96,11 +127,13 @@ export default async function PrefeituraDashboardPage(props: {
         <div className="w-full max-w-5xl mx-auto space-y-6">
           <div>
             <h1 className="font-title font-bold text-2xl">Dashboard Estratégico (Prefeitura)</h1>
-            <div className="text-sm text-foreground/70 mt-1">Indicadores por cidade e mapa de calor.</div>
+            <div className="text-sm text-foreground/70 mt-1">
+              {formatWindowLabel(data?.period ?? period, data?.windowDays ?? windowDays)}
+            </div>
           </div>
 
           <Card className="p-4">
-            <form className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+            <form className="grid grid-cols-1 lg:grid-cols-6 gap-3">
               <div>
                 <div className="text-xs text-foreground/60 mb-1">Cidade</div>
                 <input
@@ -132,6 +165,22 @@ export default async function PrefeituraDashboardPage(props: {
                 />
               </div>
               <div>
+                <div className="text-xs text-foreground/60 mb-1">Período</div>
+                <select
+                  name="period"
+                  aria-label="Período"
+                  defaultValue={data?.period ?? period ?? ""}
+                  className="h-10 w-full rounded-xl border border-black/10 bg-white px-3 outline-none ring-offset-2 transition focus:ring-2 focus:ring-secondary"
+                >
+                  <option value="">Últimos {data?.windowDays ?? windowDays} dias</option>
+                  {periodOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <div className="text-xs text-foreground/60 mb-1">Janela</div>
                 <select
                   name="windowDays"
@@ -145,6 +194,7 @@ export default async function PrefeituraDashboardPage(props: {
                   <option value="60">60 dias</option>
                   <option value="90">90 dias</option>
                 </select>
+                <div className="mt-1 text-[11px] text-foreground/60">A janela vale quando nenhum mês é selecionado.</div>
               </div>
               <div className="flex items-end">
                 <button
