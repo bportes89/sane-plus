@@ -204,8 +204,16 @@ export function MapPicker({
   }, []);
 
   useEffect(() => {
-    if (typeof lat !== "number" || typeof lng !== "number") return;
     if (!mapRef.current) return;
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      if (markerRef.current) {
+        try {
+          markerRef.current.remove();
+        } catch {}
+        markerRef.current = null;
+      }
+      return;
+    }
     (async () => {
       const L = await import("leaflet");
       if (!mapRef.current) return;

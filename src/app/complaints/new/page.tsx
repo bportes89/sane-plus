@@ -16,6 +16,7 @@ export default function NewComplaintPage() {
   const saveTimerRef = useRef<number | null>(null);
   const cepTimerRef = useRef<number | null>(null);
   const cepAbortRef = useRef<AbortController | null>(null);
+  const positionSyncSourceRef = useRef<"none" | "cep" | "manual" | "map">("none");
 
   const [companyName, setCompanyName] = useState("");
   const [category, setCategory] = useState<keyof typeof categories>("Água");
@@ -37,6 +38,8 @@ export default function NewComplaintPage() {
   const [detectedCity, setDetectedCity] = useState("");
   const [detectedState, setDetectedState] = useState("");
   const [detectedLabel, setDetectedLabel] = useState("");
+  const [positionSource, setPositionSource] = useState<"none" | "cep" | "manual" | "map">("none");
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -71,6 +74,8 @@ export default function NewComplaintPage() {
         category?: keyof typeof categories;
         subcategory?: string;
         position?: { lat: number; lng: number } | null;
+        positionSource?: "none" | "cep" | "manual" | "map";
+        locationConfirmed?: boolean;
         cepText?: string;
         neighborhood?: string;
         street?: string;
@@ -91,6 +96,15 @@ export default function NewComplaintPage() {
         setLatText(String(draft.position.lat));
         setLngText(String(draft.position.lng));
       }
+      if (
+        draft.positionSource === "cep" ||
+        draft.positionSource === "manual" ||
+        draft.positionSource === "map"
+      ) {
+        setPositionSource(draft.positionSource);
+        positionSyncSourceRef.current = draft.positionSource;
+      }
+      if (typeof draft.locationConfirmed === "boolean") setLocationConfirmed(draft.locationConfirmed);
       if (typeof draft.cepText === "string") setCepText(draft.cepText);
       if (typeof draft.neighborhood === "string") setNeighborhood(draft.neighborhood);
       if (typeof draft.street === "string") setStreet(draft.street);
@@ -107,6 +121,14 @@ export default function NewComplaintPage() {
       setDetectedCity("");
       setDetectedState("");
       setDetectedLabel("");
+      if (positionSyncSourceRef.current === "cep") {
+        positionSyncSourceRef.current = "none";
+        setPositionSource("none");
+        setLocationConfirmed(false);
+        setPosition(null);
+        setLatText("");
+        setLngText("");
+      }
       if (cepTimerRef.current) window.clearTimeout(cepTimerRef.current);
       cepAbortRef.current?.abort();
       cepAbortRef.current = null;
@@ -129,6 +151,14 @@ export default function NewComplaintPage() {
             setDetectedCity("");
             setDetectedState("");
             setDetectedLabel("");
+            if (positionSyncSourceRef.current === "cep") {
+              positionSyncSourceRef.current = "none";
+              setPositionSource("none");
+              setLocationConfirmed(false);
+              setPosition(null);
+              setLatText("");
+              setLngText("");
+            }
             return;
           }
           const obj =
@@ -141,6 +171,9 @@ export default function NewComplaintPage() {
           setDetectedState(typeof obj.state === "string" ? obj.state : "");
           setDetectedLabel(typeof obj.label === "string" ? obj.label : "");
           if (typeof obj.lat === "number" && typeof obj.lng === "number") {
+            positionSyncSourceRef.current = "cep";
+            setPositionSource("cep");
+            setLocationConfirmed(false);
             setPosition({ lat: obj.lat, lng: obj.lng });
             setLatText(String(obj.lat));
             setLngText(String(obj.lng));
@@ -153,6 +186,14 @@ export default function NewComplaintPage() {
           setDetectedCity("");
           setDetectedState("");
           setDetectedLabel("");
+          if (positionSyncSourceRef.current === "cep") {
+            positionSyncSourceRef.current = "none";
+            setPositionSource("none");
+            setLocationConfirmed(false);
+            setPosition(null);
+            setLatText("");
+            setLngText("");
+          }
         }
       })();
     }, 350);
@@ -170,8 +211,24 @@ export default function NewComplaintPage() {
     };
     const lat = v(latText);
     const lng = v(lngText);
-    if (lat === null || lng === null) return;
+    if (lat === null || lng === null) {
+      if (positionSyncSourceRef.current === "manual") {
+        positionSyncSourceRef.current = "none";
+        setPositionSource("none");
+        setLocationConfirmed(false);
+        setPosition(null);
+      }
+      return;
+    }
+    const source = positionSyncSourceRef.current;
     setPosition({ lat, lng });
+    if (source === "cep" || source === "map") {
+      positionSyncSourceRef.current = source;
+      return;
+    }
+    positionSyncSourceRef.current = "manual";
+    setPositionSource("manual");
+    setLocationConfirmed(true);
   }, [latText, lngText]);
 
   useEffect(() => {
@@ -186,6 +243,8 @@ export default function NewComplaintPage() {
             category,
             subcategory,
             position,
+            positionSource,
+            locationConfirmed,
             cepText,
             neighborhood,
             street,
@@ -204,6 +263,8 @@ export default function NewComplaintPage() {
     category,
     subcategory,
     position,
+    positionSource,
+    locationConfirmed,
     cepText,
     neighborhood,
     street,
@@ -224,6 +285,10 @@ export default function NewComplaintPage() {
     if (f.manualReview) items.push("Tema sensível (precisa revisão humana)");
     return items;
   })();
+
+  const cityStateLabel = [detectedCity, detectedState].filter(Boolean).join(" / ");
+  const requiresLocationConfirmation =
+    positionSource === "cep" && !!position && !!detectedCity && !!detectedState && !locationConfirmed;
 
   async function submit() {
     setSending(true);
@@ -459,7 +524,10 @@ export default function NewComplaintPage() {
                 lat={position?.lat}
                 lng={position?.lng}
                 onChange={(p) => {
+                  positionSyncSourceRef.current = "map";
                   setPosition(p);
+                  setPositionSource("map");
+                  setLocationConfirmed(true);
                   setLatText(String(p.lat));
                   setLngText(String(p.lng));
                 }}
@@ -470,14 +538,38 @@ export default function NewComplaintPage() {
                     Local detectado pelo CEP
                   </div>
                   <div className="mt-1 text-base font-semibold text-foreground">
-                    {[detectedCity, detectedState].filter(Boolean).join(" / ") || "Local identificado"}
+                    {cityStateLabel || "Local identificado"}
                   </div>
                   {detectedLabel ? <div className="mt-1 text-sm text-foreground/75">{detectedLabel}</div> : null}
+                  {position ? (
+                    <div className="mt-2 text-xs text-foreground/70">
+                      Coordenadas do ponto: {position.lat.toFixed(6)}, {position.lng.toFixed(6)}
+                    </div>
+                  ) : null}
+                  {positionSource === "cep" ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant={locationConfirmed ? "secondary" : "primary"}
+                        onClick={() => setLocationConfirmed(true)}
+                      >
+                        {locationConfirmed ? "Ponto confirmado" : "Confirmar ponto no mapa"}
+                      </Button>
+                      <div className="text-xs text-foreground/70">
+                        Revise o ponto no mapa antes de avançar.
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <div id="map-help" className="text-xs text-foreground/70">
-                Você pode marcar no mapa ou digitar latitude/longitude.
+                Você pode marcar no mapa, confirmar o ponto detectado pelo CEP ou digitar latitude/longitude.
               </div>
+              {requiresLocationConfirmation ? (
+                <div className="rounded-xl border border-[#F4C2D7] bg-[#FFF1F7] px-4 py-3 text-sm text-[#8A1F4D]">
+                  Confirme o ponto detectado pelo CEP no mapa antes de continuar.
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -624,7 +716,7 @@ export default function NewComplaintPage() {
             onClick={() => setStep((s) => Math.min(3, s + 1) as Step)}
             disabled={
               (step === 1 && !companyName.trim()) ||
-              (step === 2 && !neighborhood.trim()) ||
+              (step === 2 && (!neighborhood.trim() || !position || requiresLocationConfirmation)) ||
               (step === 3 && description.trim().length < 10)
             }
           >
