@@ -17,6 +17,7 @@ type NominatimItem = {
   display_name?: string;
   address?: {
     postcode?: string;
+    house_number?: string;
     road?: string;
     neighbourhood?: string;
     suburb?: string;
@@ -73,34 +74,38 @@ async function fetchJson<T>(url: string, init?: RequestInit) {
   return { ok: true as const, status: res.status, data };
 }
 
-export async function GET(req: NextRequest) {
-  const ip = getClientIp(req.headers);
-  const rl = rateLimit({ key: `geo:cep:${ip}`, limit: 120, windowMs: 60_000 });
-  const headers = rateLimitHeaders(rl);
-  if (!rl.ok) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers });
-  }
+type GeoLookupInput = {
+  cep?: string | null;
+  street?: string | null;
+  number?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+};
 
-  const url = new URL(req.url);
-  const raw = (url.searchParams.get("cep") ?? "").trim();
-  const cep = raw.replace(/\D/g, "");
-  if (cep.length !== 8) {
-    return NextResponse.json({ error: "invalid_cep" }, { status: 400, headers });
-  }
+const normalize = (value: string | null | undefined) =>
+  (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 
-  const viaCepUrl = `https://viacep.com.br/ws/${cep}/json/`;
-  const via = await fetchJson<ViaCepDto>(viaCepUrl, {
-    headers: { accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!via.ok || !via.data || via.data.erro) {
-    return NextResponse.json({ error: "not_found" }, { status: 404, headers });
-  }
+function normalizeState(value: string | null | undefined) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return null;
+  const upper = trimmed.toUpperCase();
+  return upper in UF_TO_STATE ? upper : trimmed;
+}
 
-  const street = (via.data.logradouro ?? "").trim() || null;
-  const neighborhood = (via.data.bairro ?? "").trim() || null;
-  const city = (via.data.localidade ?? "").trim() || null;
-  const state = (via.data.uf ?? "").trim() || null;
+async function resolveCoordinates(input: GeoLookupInput) {
+  const cep = (input.cep ?? "").replace(/\D/g, "");
+  const street = (input.street ?? "").trim() || null;
+  const number = (input.number ?? "").trim() || null;
+  const neighborhood = (input.neighborhood ?? "").trim() || null;
+  const city = (input.city ?? "").trim() || null;
+  const state = normalizeState(input.state);
+  const streetLine = [street, number].filter(Boolean).join(", ") || street;
 
   const ua = "SANE+ (dev) - CEP lookup";
   const nominatimHeaders = {
@@ -109,19 +114,12 @@ export async function GET(req: NextRequest) {
     "accept-language": "pt-BR,pt;q=0.9,en;q=0.6",
   };
 
-  const normalize = (value: string | null | undefined) =>
-    (value ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toLowerCase();
-
   const normalizedState = normalize(state);
   const normalizedStateName = normalize(state ? UF_TO_STATE[state] ?? state : null);
   const normalizedCity = normalize(city);
   const normalizedStreet = normalize(street);
   const normalizedNeighborhood = normalize(neighborhood);
+  const normalizedNumber = normalize(number);
   const searchState = state ? UF_TO_STATE[state] ?? state : null;
 
   function stateMatches(value: string | null | undefined) {
@@ -152,12 +150,14 @@ export async function GET(req: NextRequest) {
     const itemRoad = normalize(address.road ?? null);
     const itemNeighborhood = normalize(address.neighbourhood ?? address.suburb ?? null);
     const itemCep = (address.postcode ?? "").replace(/\D/g, "");
+    const itemHouseNumber = normalize(address.house_number ?? null);
 
     let score = candidate.searchRank;
-    if (itemCep === cep) score += 12;
+    if (cep && itemCep === cep) score += 12;
     if (normalizedState && (itemStateCode === normalizedState || stateMatches(address.state))) score += 8;
     if (normalizedCity && itemCity === normalizedCity) score += 8;
-    if (normalizedStreet && (itemRoad === normalizedStreet || itemRoad.includes(normalizedStreet))) score += 5;
+    if (normalizedStreet && (itemRoad === normalizedStreet || itemRoad.includes(normalizedStreet))) score += 6;
+    if (normalizedNumber && itemHouseNumber === normalizedNumber) score += 6;
     if (
       normalizedNeighborhood &&
       (itemNeighborhood === normalizedNeighborhood || itemNeighborhood.includes(normalizedNeighborhood))
@@ -183,27 +183,32 @@ export async function GET(req: NextRequest) {
   }
 
   const base = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=br";
-  const structuredParams = new URLSearchParams({
-    postalcode: cep,
-    country: "Brasil",
-  });
-  if (street) structuredParams.set("street", street);
+  const structuredParams = new URLSearchParams({ country: "Brasil" });
+  if (cep) structuredParams.set("postalcode", cep);
+  if (streetLine) structuredParams.set("street", streetLine);
   if (city) structuredParams.set("city", city);
   if (searchState) structuredParams.set("state", searchState);
+
   const queries = [
-    { url: `${base}&${structuredParams.toString()}`, rank: 30 },
+    { url: `${base}&${structuredParams.toString()}`, rank: 34 },
     {
       url: `${base}&q=${encodeURIComponent(
-        [street, neighborhood, city, searchState, "Brasil", cep].filter(Boolean).join(", "),
+        [street, number, neighborhood, city, searchState, "Brasil", cep].filter(Boolean).join(", "),
       )}`,
-      rank: 26,
+      rank: 30,
     },
     {
-      url: `${base}&q=${encodeURIComponent([street, city, searchState, "Brasil"].filter(Boolean).join(", "))}`,
-      rank: 23,
+      url: `${base}&q=${encodeURIComponent(
+        [street, number, city, searchState, "Brasil", cep].filter(Boolean).join(", "),
+      )}`,
+      rank: 27,
     },
     {
-      url: `${base}&q=${encodeURIComponent([neighborhood, city, searchState, "Brasil"].filter(Boolean).join(", "))}`,
+      url: `${base}&q=${encodeURIComponent([street, city, searchState, "Brasil", cep].filter(Boolean).join(", "))}`,
+      rank: 24,
+    },
+    {
+      url: `${base}&q=${encodeURIComponent([neighborhood, city, searchState, "Brasil", cep].filter(Boolean).join(", "))}`,
       rank: 18,
     },
     {
@@ -214,24 +219,106 @@ export async function GET(req: NextRequest) {
       url: `${base}&q=${encodeURIComponent([city, searchState, "Brasil"].filter(Boolean).join(", "))}`,
       rank: 10,
     },
-    { url: `${base}&postalcode=${encodeURIComponent(cep)}`, rank: 8 },
+    ...(cep ? [{ url: `${base}&postalcode=${encodeURIComponent(cep)}`, rank: 8 }] : []),
   ];
 
   const allCandidates = (
     await Promise.all(queries.map((entry) => geocode(entry.url, entry.rank)))
   ).flat();
 
-  const bestCandidate = [...allCandidates]
-    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
+  return [...allCandidates].sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
+}
 
-  const label = [street, neighborhood, city && state ? `${city}/${state}` : city || state]
+export async function GET(req: NextRequest) {
+  const ip = getClientIp(req.headers);
+  const rl = rateLimit({ key: `geo:cep:${ip}`, limit: 120, windowMs: 60_000 });
+  const headers = rateLimitHeaders(rl);
+  if (!rl.ok) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers });
+  }
+
+  const url = new URL(req.url);
+  const rawCep = (url.searchParams.get("cep") ?? "").trim();
+  const cep = rawCep.replace(/\D/g, "");
+  const street = (url.searchParams.get("street") ?? "").trim() || null;
+  const number = (url.searchParams.get("number") ?? "").trim() || null;
+  const neighborhood = (url.searchParams.get("neighborhood") ?? "").trim() || null;
+  const city = (url.searchParams.get("city") ?? "").trim() || null;
+  const state = normalizeState(url.searchParams.get("state"));
+
+  if (rawCep) {
+    if (cep.length !== 8) {
+      return NextResponse.json({ error: "invalid_cep" }, { status: 400, headers });
+    }
+
+    const viaCepUrl = `https://viacep.com.br/ws/${cep}/json/`;
+    const via = await fetchJson<ViaCepDto>(viaCepUrl, {
+      headers: { accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!via.ok || !via.data || via.data.erro) {
+      return NextResponse.json({ error: "not_found" }, { status: 404, headers });
+    }
+
+    const resolvedStreet = (via.data.logradouro ?? "").trim() || null;
+    const resolvedNeighborhood = (via.data.bairro ?? "").trim() || null;
+    const resolvedCity = (via.data.localidade ?? "").trim() || null;
+    const resolvedState = normalizeState(via.data.uf);
+    const bestCandidate = await resolveCoordinates({
+      cep,
+      street: resolvedStreet,
+      neighborhood: resolvedNeighborhood,
+      city: resolvedCity,
+      state: resolvedState,
+    });
+    const label = [
+      resolvedStreet,
+      resolvedNeighborhood,
+      resolvedCity && resolvedState ? `${resolvedCity}/${resolvedState}` : resolvedCity || resolvedState,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    return NextResponse.json(
+      {
+        cep,
+        street: resolvedStreet,
+        neighborhood: resolvedNeighborhood,
+        city: resolvedCity,
+        state: resolvedState,
+        lat: bestCandidate?.lat ?? null,
+        lng: bestCandidate?.lng ?? null,
+        label: label || null,
+      },
+      { headers },
+    );
+  }
+
+  if (!street || !city || !state) {
+    return NextResponse.json({ error: "invalid_address" }, { status: 400, headers });
+  }
+
+  const bestCandidate = await resolveCoordinates({
+    street,
+    number,
+    neighborhood,
+    city,
+    state,
+  });
+  const label = [
+    street,
+    number ? `nº ${number}` : null,
+    neighborhood,
+    city && state ? `${city}/${state}` : city || state,
+  ]
     .filter(Boolean)
     .join(", ");
 
   return NextResponse.json(
     {
-      cep,
+      cep: null,
       street,
+      number,
       neighborhood,
       city,
       state,

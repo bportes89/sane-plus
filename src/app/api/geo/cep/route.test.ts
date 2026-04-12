@@ -204,8 +204,66 @@ describe("GET /api/geo/cep", () => {
     expect(json.lng).toBeCloseTo(-51.933056);
   });
 
+  it("localiza por rua, número, cidade e UF mesmo sem CEP", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (
+        url.includes("street=Rua+Sargento+Cunha%2C+440") &&
+        url.includes("city=Maring%C3%A1") &&
+        url.includes("state=Paran%C3%A1")
+      ) {
+        return new Response(
+          JSON.stringify([
+            {
+              lat: "-23.5509",
+              lon: "-51.4582",
+              address: {
+                road: "Rua Sargento Cunha",
+                house_number: "440",
+                city: "Maringá",
+                state: "Paraná",
+                state_code: "PR",
+                country_code: "br",
+              },
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("nominatim.openstreetmap.org")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response("{}", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const req = new Request(
+      "http://localhost/api/geo/cep?street=Rua%20Sargento%20Cunha&number=440&city=Maring%C3%A1&state=PR",
+    );
+    const res = await GET(req as unknown as NextRequest);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      city?: string | null;
+      state?: string | null;
+      number?: string | null;
+      lat?: number | null;
+      lng?: number | null;
+    };
+    expect(json.city).toBe("Maringá");
+    expect(json.state).toBe("PR");
+    expect(json.number).toBe("440");
+    expect(json.lat).toBeCloseTo(-23.5509);
+    expect(json.lng).toBeCloseTo(-51.4582);
+  });
+
   it("valida CEP inválido", async () => {
     const req = new Request("http://localhost/api/geo/cep?cep=123");
+    const res = await GET(req as unknown as NextRequest);
+    expect(res.status).toBe(400);
+  });
+
+  it("valida endereço incompleto sem CEP", async () => {
+    const req = new Request("http://localhost/api/geo/cep?street=Rua%20Sargento%20Cunha&city=Maring%C3%A1");
     const res = await GET(req as unknown as NextRequest);
     expect(res.status).toBe(400);
   });

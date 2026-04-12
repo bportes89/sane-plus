@@ -16,7 +16,9 @@ export default function NewComplaintPage() {
   const saveTimerRef = useRef<number | null>(null);
   const cepTimerRef = useRef<number | null>(null);
   const cepAbortRef = useRef<AbortController | null>(null);
-  const positionSyncSourceRef = useRef<"none" | "cep" | "manual" | "map">("none");
+  const addressTimerRef = useRef<number | null>(null);
+  const addressAbortRef = useRef<AbortController | null>(null);
+  const positionSyncSourceRef = useRef<"none" | "cep" | "address" | "manual" | "map">("none");
 
   const [companyName, setCompanyName] = useState("");
   const [category, setCategory] = useState<keyof typeof categories>("Água");
@@ -30,15 +32,20 @@ export default function NewComplaintPage() {
   const [neighborhood, setNeighborhood] = useState("");
   const [street, setStreet] = useState("");
   const [number, setNumber] = useState("");
+  const [city, setCity] = useState("");
+  const [stateCode, setStateCode] = useState("");
   const [description, setDescription] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [cepError, setCepError] = useState<string | null>(null);
+  const [addressStatus, setAddressStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [detectedCity, setDetectedCity] = useState("");
   const [detectedState, setDetectedState] = useState("");
   const [detectedLabel, setDetectedLabel] = useState("");
-  const [positionSource, setPositionSource] = useState<"none" | "cep" | "manual" | "map">("none");
+  const [detectedSource, setDetectedSource] = useState<"none" | "cep" | "address">("none");
+  const [positionSource, setPositionSource] = useState<"none" | "cep" | "address" | "manual" | "map">("none");
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
@@ -57,7 +64,7 @@ export default function NewComplaintPage() {
     };
   } | null>(null);
 
-  const locationLabel = [neighborhood, street, number ? `nº ${number}` : ""]
+  const locationLabel = [neighborhood, street, number ? `nº ${number}` : "", city, stateCode]
     .map((x) => x.trim())
     .filter(Boolean)
     .join(", ");
@@ -74,12 +81,14 @@ export default function NewComplaintPage() {
         category?: keyof typeof categories;
         subcategory?: string;
         position?: { lat: number; lng: number } | null;
-        positionSource?: "none" | "cep" | "manual" | "map";
+        positionSource?: "none" | "cep" | "address" | "manual" | "map";
         locationConfirmed?: boolean;
         cepText?: string;
         neighborhood?: string;
         street?: string;
         number?: string;
+        city?: string;
+        stateCode?: string;
         description?: string;
       };
       const nextStep = Number(draft.step);
@@ -98,6 +107,7 @@ export default function NewComplaintPage() {
       }
       if (
         draft.positionSource === "cep" ||
+        draft.positionSource === "address" ||
         draft.positionSource === "manual" ||
         draft.positionSource === "map"
       ) {
@@ -109,6 +119,8 @@ export default function NewComplaintPage() {
       if (typeof draft.neighborhood === "string") setNeighborhood(draft.neighborhood);
       if (typeof draft.street === "string") setStreet(draft.street);
       if (typeof draft.number === "string") setNumber(draft.number);
+      if (typeof draft.city === "string") setCity(draft.city);
+      if (typeof draft.stateCode === "string") setStateCode(draft.stateCode);
       if (typeof draft.description === "string") setDescription(draft.description);
     } catch {}
   }, []);
@@ -118,9 +130,6 @@ export default function NewComplaintPage() {
     setCepError(null);
     if (digits.length !== 8) {
       setCepStatus("idle");
-      setDetectedCity("");
-      setDetectedState("");
-      setDetectedLabel("");
       if (positionSyncSourceRef.current === "cep") {
         positionSyncSourceRef.current = "none";
         setPositionSource("none");
@@ -128,6 +137,10 @@ export default function NewComplaintPage() {
         setPosition(null);
         setLatText("");
         setLngText("");
+        setDetectedCity("");
+        setDetectedState("");
+        setDetectedLabel("");
+        setDetectedSource("none");
       }
       if (cepTimerRef.current) window.clearTimeout(cepTimerRef.current);
       cepAbortRef.current?.abort();
@@ -148,9 +161,6 @@ export default function NewComplaintPage() {
           if (!res.ok) {
             setCepStatus("error");
             setCepError("Não foi possível encontrar esse CEP.");
-            setDetectedCity("");
-            setDetectedState("");
-            setDetectedLabel("");
             if (positionSyncSourceRef.current === "cep") {
               positionSyncSourceRef.current = "none";
               setPositionSource("none");
@@ -158,6 +168,12 @@ export default function NewComplaintPage() {
               setPosition(null);
               setLatText("");
               setLngText("");
+            }
+            if (detectedSource === "cep") {
+              setDetectedCity("");
+              setDetectedState("");
+              setDetectedLabel("");
+              setDetectedSource("none");
             }
             return;
           }
@@ -167,9 +183,14 @@ export default function NewComplaintPage() {
               : ({} as Record<string, unknown>);
           if (typeof obj.neighborhood === "string") setNeighborhood(obj.neighborhood);
           if (typeof obj.street === "string") setStreet(obj.street);
-          setDetectedCity(typeof obj.city === "string" ? obj.city : "");
-          setDetectedState(typeof obj.state === "string" ? obj.state : "");
+          const nextCity = typeof obj.city === "string" ? obj.city : "";
+          const nextState = typeof obj.state === "string" ? obj.state : "";
+          setCity(nextCity);
+          setStateCode(nextState);
+          setDetectedCity(nextCity);
+          setDetectedState(nextState);
           setDetectedLabel(typeof obj.label === "string" ? obj.label : "");
+          setDetectedSource("cep");
           if (typeof obj.lat === "number" && typeof obj.lng === "number") {
             positionSyncSourceRef.current = "cep";
             setPositionSource("cep");
@@ -183,9 +204,6 @@ export default function NewComplaintPage() {
           if ((e as { name?: string } | null)?.name === "AbortError") return;
           setCepStatus("error");
           setCepError("Falha ao buscar CEP. Tente novamente.");
-          setDetectedCity("");
-          setDetectedState("");
-          setDetectedLabel("");
           if (positionSyncSourceRef.current === "cep") {
             positionSyncSourceRef.current = "none";
             setPositionSource("none");
@@ -194,6 +212,12 @@ export default function NewComplaintPage() {
             setLatText("");
             setLngText("");
           }
+          if (detectedSource === "cep") {
+            setDetectedCity("");
+            setDetectedState("");
+            setDetectedLabel("");
+            setDetectedSource("none");
+          }
         }
       })();
     }, 350);
@@ -201,7 +225,138 @@ export default function NewComplaintPage() {
     return () => {
       if (cepTimerRef.current) window.clearTimeout(cepTimerRef.current);
     };
-  }, [cepText]);
+  }, [cepText, detectedSource]);
+
+  useEffect(() => {
+    const digits = cepText.replace(/\D/g, "");
+    const normalizedState = stateCode.replace(/\s+/g, "").toUpperCase().slice(0, 2);
+    const hasAddressToLocate = !!street.trim() && !!city.trim() && normalizedState.length === 2;
+    setAddressError(null);
+
+    if (digits.length > 0) {
+      setAddressStatus("idle");
+      if (addressTimerRef.current) window.clearTimeout(addressTimerRef.current);
+      addressAbortRef.current?.abort();
+      addressAbortRef.current = null;
+      return;
+    }
+
+    if (!hasAddressToLocate) {
+      setAddressStatus("idle");
+      if (positionSyncSourceRef.current === "address") {
+        positionSyncSourceRef.current = "none";
+        setPositionSource("none");
+        setLocationConfirmed(false);
+        setPosition(null);
+        setLatText("");
+        setLngText("");
+      }
+      if (detectedSource === "address") {
+        setDetectedCity("");
+        setDetectedState("");
+        setDetectedLabel("");
+        setDetectedSource("none");
+      }
+      if (addressTimerRef.current) window.clearTimeout(addressTimerRef.current);
+      addressAbortRef.current?.abort();
+      addressAbortRef.current = null;
+      return;
+    }
+
+    if (addressTimerRef.current) window.clearTimeout(addressTimerRef.current);
+    addressTimerRef.current = window.setTimeout(() => {
+      addressAbortRef.current?.abort();
+      const controller = new AbortController();
+      addressAbortRef.current = controller;
+      setAddressStatus("loading");
+      void (async () => {
+        try {
+          const search = new URLSearchParams({
+            street: street.trim(),
+            city: city.trim(),
+            state: normalizedState,
+          });
+          if (number.trim()) search.set("number", number.trim());
+          if (neighborhood.trim()) search.set("neighborhood", neighborhood.trim());
+          const res = await fetch(`/api/geo/cep?${search.toString()}`, { signal: controller.signal });
+          const json = (await res.json().catch(() => null)) as unknown;
+          if (!res.ok) {
+            setAddressStatus("error");
+            setAddressError("Não foi possível localizar esse endereço no mapa.");
+            if (positionSyncSourceRef.current === "address") {
+              positionSyncSourceRef.current = "none";
+              setPositionSource("none");
+              setLocationConfirmed(false);
+              setPosition(null);
+              setLatText("");
+              setLngText("");
+            }
+            if (detectedSource === "address") {
+              setDetectedCity("");
+              setDetectedState("");
+              setDetectedLabel("");
+              setDetectedSource("none");
+            }
+            return;
+          }
+          const obj =
+            json && typeof json === "object"
+              ? (json as Record<string, unknown>)
+              : ({} as Record<string, unknown>);
+          const nextCity = typeof obj.city === "string" ? obj.city : city.trim();
+          const nextState = typeof obj.state === "string" ? obj.state : normalizedState;
+          setCity(nextCity);
+          setStateCode(nextState);
+          setDetectedCity(nextCity);
+          setDetectedState(nextState);
+          setDetectedLabel(typeof obj.label === "string" ? obj.label : "");
+          setDetectedSource("address");
+          if (typeof obj.lat === "number" && typeof obj.lng === "number") {
+            positionSyncSourceRef.current = "address";
+            setPositionSource("address");
+            setLocationConfirmed(false);
+            setPosition({ lat: obj.lat, lng: obj.lng });
+            setLatText(String(obj.lat));
+            setLngText(String(obj.lng));
+            setAddressStatus("ok");
+            return;
+          }
+          setAddressStatus("error");
+          setAddressError("Não foi possível localizar esse endereço no mapa.");
+          if (positionSyncSourceRef.current === "address") {
+            positionSyncSourceRef.current = "none";
+            setPositionSource("none");
+            setLocationConfirmed(false);
+            setPosition(null);
+            setLatText("");
+            setLngText("");
+          }
+        } catch (e) {
+          if ((e as { name?: string } | null)?.name === "AbortError") return;
+          setAddressStatus("error");
+          setAddressError("Falha ao localizar o endereço. Tente novamente.");
+          if (positionSyncSourceRef.current === "address") {
+            positionSyncSourceRef.current = "none";
+            setPositionSource("none");
+            setLocationConfirmed(false);
+            setPosition(null);
+            setLatText("");
+            setLngText("");
+          }
+          if (detectedSource === "address") {
+            setDetectedCity("");
+            setDetectedState("");
+            setDetectedLabel("");
+            setDetectedSource("none");
+          }
+        }
+      })();
+    }, 450);
+
+    return () => {
+      if (addressTimerRef.current) window.clearTimeout(addressTimerRef.current);
+    };
+  }, [cepText, street, number, neighborhood, city, stateCode, detectedSource]);
 
   useEffect(() => {
     const v = (s: string) => {
@@ -222,7 +377,7 @@ export default function NewComplaintPage() {
     }
     const source = positionSyncSourceRef.current;
     setPosition({ lat, lng });
-    if (source === "cep" || source === "map") {
+    if (source === "cep" || source === "address" || source === "map") {
       positionSyncSourceRef.current = source;
       return;
     }
@@ -249,6 +404,8 @@ export default function NewComplaintPage() {
             neighborhood,
             street,
             number,
+            city,
+            stateCode,
             description,
           }),
         );
@@ -269,6 +426,8 @@ export default function NewComplaintPage() {
     neighborhood,
     street,
     number,
+    city,
+    stateCode,
     description,
   ]);
 
@@ -288,7 +447,11 @@ export default function NewComplaintPage() {
 
   const cityStateLabel = [detectedCity, detectedState].filter(Boolean).join(" / ");
   const requiresLocationConfirmation =
-    positionSource === "cep" && !!position && !!detectedCity && !!detectedState && !locationConfirmed;
+    (positionSource === "cep" || positionSource === "address") &&
+    !!position &&
+    !!detectedCity &&
+    !!detectedState &&
+    !locationConfirmed;
 
   async function submit() {
     setSending(true);
@@ -491,6 +654,29 @@ export default function NewComplaintPage() {
                   />
                 </div>
                 <div className="space-y-1">
+                  <label htmlFor="city" className="block text-sm font-medium">
+                    Cidade
+                  </label>
+                  <Input
+                    id="city"
+                    autoComplete="address-level2"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="state" className="block text-sm font-medium">
+                    UF
+                  </label>
+                  <Input
+                    id="state"
+                    autoComplete="address-level1"
+                    placeholder="PR"
+                    value={stateCode}
+                    onChange={(e) => setStateCode(e.target.value.replace(/[^a-z]/gi, "").toUpperCase().slice(0, 2))}
+                  />
+                </div>
+                <div className="space-y-1">
                   <label htmlFor="lat" className="block text-sm font-medium">
                     Latitude (opcional)
                   </label>
@@ -514,6 +700,15 @@ export default function NewComplaintPage() {
                     onChange={(e) => setLngText(e.target.value)}
                   />
                 </div>
+                <div className="sm:col-span-2 text-xs text-foreground/70">
+                  {cepText.replace(/\D/g, "").length === 8
+                    ? "CEP preenchido: a localização será priorizada pelo CEP."
+                    : addressStatus === "loading"
+                      ? "Buscando ponto pelo endereço…"
+                      : addressError
+                        ? addressError
+                        : "Sem CEP, preencha rua, cidade e UF para detectar o ponto automaticamente."}
+                </div>
               </div>
               <div className="text-xs text-foreground/70">
                 Evite incluir dados pessoais de terceiros.
@@ -535,7 +730,7 @@ export default function NewComplaintPage() {
               {detectedCity || detectedState || detectedLabel ? (
                 <div className="rounded-2xl border border-[#E7D7FF] bg-[linear-gradient(135deg,rgba(130,10,209,0.08)_0%,rgba(179,136,255,0.10)_100%)] px-4 py-3 text-sm text-[#45207A]">
                   <div className="font-title text-[11px] font-semibold uppercase tracking-[0.14em] text-[#820AD1]">
-                    Local detectado pelo CEP
+                    {detectedSource === "address" ? "Local detectado pelo endereço" : "Local detectado pelo CEP"}
                   </div>
                   <div className="mt-1 text-base font-semibold text-foreground">
                     {cityStateLabel || "Local identificado"}
@@ -546,7 +741,7 @@ export default function NewComplaintPage() {
                       Coordenadas do ponto: {position.lat.toFixed(6)}, {position.lng.toFixed(6)}
                     </div>
                   ) : null}
-                  {positionSource === "cep" ? (
+                  {positionSource === "cep" || positionSource === "address" ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
@@ -563,11 +758,11 @@ export default function NewComplaintPage() {
                 </div>
               ) : null}
               <div id="map-help" className="text-xs text-foreground/70">
-                Você pode marcar no mapa, confirmar o ponto detectado pelo CEP ou digitar latitude/longitude.
+                Você pode usar CEP, endereço, marcar no mapa ou digitar latitude/longitude.
               </div>
               {requiresLocationConfirmation ? (
                 <div className="rounded-xl border border-[#F4C2D7] bg-[#FFF1F7] px-4 py-3 text-sm text-[#8A1F4D]">
-                  Confirme o ponto detectado pelo CEP no mapa antes de continuar.
+                  Confirme o ponto detectado automaticamente no mapa antes de continuar.
                 </div>
               ) : null}
             </div>
