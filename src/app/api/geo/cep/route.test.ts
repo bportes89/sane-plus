@@ -131,6 +131,79 @@ describe("GET /api/geo/cep", () => {
     expect(json.lng).toBeCloseTo(-46.6418);
   });
 
+  it("usa fallback da cidade correta quando o endereço exato não retorna coordenadas", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("viacep.com.br")) {
+        return new Response(
+          JSON.stringify({
+            logradouro: "Rua Vereador Victo Manoel Hoffmeister",
+            bairro: "Jardim Espanha",
+            localidade: "Maringá",
+            uf: "PR",
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (url.includes("q=Rua%20Vereador%20Victo%20Manoel%20Hoffmeister%2C%20Jardim%20Espanha%2C%20Maring%C3%A1%2C%20Paran%C3%A1%2C%20Brasil%2C%2087060696")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+
+      if (url.includes("q=Rua%20Vereador%20Victo%20Manoel%20Hoffmeister%2C%20Maring%C3%A1%2C%20Paran%C3%A1%2C%20Brasil")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+
+      if (url.includes("q=Jardim%20Espanha%2C%20Maring%C3%A1%2C%20Paran%C3%A1%2C%20Brasil")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+
+      if (url.includes("q=Maring%C3%A1%2C%20Paran%C3%A1%2C%20Brasil%2C%2087060696")) {
+        return new Response(
+          JSON.stringify([
+            {
+              lat: "-23.420999",
+              lon: "-51.933056",
+              address: {
+                city: "Maringá",
+                state: "Paraná",
+                state_code: "PR",
+                country_code: "br",
+              },
+            },
+            {
+              lat: "-23.55052",
+              lon: "-46.633308",
+              address: {
+                city: "São Paulo",
+                state: "São Paulo",
+                state_code: "SP",
+                country_code: "br",
+              },
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+
+      if (url.includes("nominatim.openstreetmap.org")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+
+      return new Response("{}", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const req = new Request("http://localhost/api/geo/cep?cep=87060-696");
+    const res = await GET(req as unknown as NextRequest);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { lat?: number | null; lng?: number | null; city?: string | null; state?: string | null };
+    expect(json.city).toBe("Maringá");
+    expect(json.state).toBe("PR");
+    expect(json.lat).toBeCloseTo(-23.420999);
+    expect(json.lng).toBeCloseTo(-51.933056);
+  });
+
   it("valida CEP inválido", async () => {
     const req = new Request("http://localhost/api/geo/cep?cep=123");
     const res = await GET(req as unknown as NextRequest);

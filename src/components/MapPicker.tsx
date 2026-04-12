@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { DivIcon, LeafletMouseEvent, Map as LeafletMap, Marker, TileLayer } from "leaflet";
 
+const DEFAULT_BRAZIL_CENTER = {
+  lat: -14.235,
+  lng: -51.9253,
+};
+
 export function MapPicker({
   lat,
   lng,
@@ -28,25 +33,17 @@ export function MapPicker({
   const tileLayerRef = useRef<TileLayer | null>(null);
   const onChangeRef = useRef<typeof onChange>(onChange);
   const readOnlyRef = useRef(readOnly);
-  const initialCenterRef = useRef<{ lat: number; lng: number } | null>(null);
-  const initialHasMarkerRef = useRef(false);
   const markerIconRef = useRef<DivIcon | null>(null);
   const providerIndexRef = useRef(0);
+  const latestPositionRef = useRef<{ lat: number; lng: number } | null>(
+    typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null,
+  );
   const tilesRef = useRef<{ errors: number; firstAt: number; switched: boolean }>({
     errors: 0,
     firstAt: 0,
     switched: false,
   });
   const [tileStatus, setTileStatus] = useState<"loading" | "ok" | "error">("loading");
-
-  if (!initialCenterRef.current) {
-    initialHasMarkerRef.current =
-      typeof lat === "number" && typeof lng === "number";
-    initialCenterRef.current = {
-      lat: typeof lat === "number" ? lat : -23.55,
-      lng: typeof lng === "number" ? lng : -46.63,
-    };
-  }
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -55,6 +52,11 @@ export function MapPicker({
   useEffect(() => {
     readOnlyRef.current = readOnly;
   }, [readOnly]);
+
+  useEffect(() => {
+    latestPositionRef.current =
+      typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null;
+  }, [lat, lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,12 +85,12 @@ export function MapPicker({
         }
       }
 
-      const initialLat = initialCenterRef.current?.lat ?? -23.55;
-      const initialLng = initialCenterRef.current?.lng ?? -46.63;
+      const initialLat = latestPositionRef.current?.lat ?? DEFAULT_BRAZIL_CENTER.lat;
+      const initialLng = latestPositionRef.current?.lng ?? DEFAULT_BRAZIL_CENTER.lng;
 
       const map = L.map(el, {
         center: [initialLat, initialLng],
-        zoom: 12,
+        zoom: latestPositionRef.current ? 15 : 4,
       });
       mapRef.current = map;
 
@@ -173,8 +175,13 @@ export function MapPicker({
         markerRef.current = L.marker(p, { icon: markerIconRef.current ?? undefined }).addTo(mapRef.current);
       }
 
-      const initialMarker = initialCenterRef.current;
-      if (initialMarker && initialHasMarkerRef.current) setMarker(initialMarker);
+      const initialMarker = latestPositionRef.current;
+      if (initialMarker) {
+        setMarker(initialMarker);
+        try {
+          map.setView([initialMarker.lat, initialMarker.lng], 15, { animate: false });
+        } catch {}
+      }
 
       map.on("click", (e: LeafletMouseEvent) => {
         if (readOnlyRef.current) return;
@@ -218,6 +225,7 @@ export function MapPicker({
       const L = await import("leaflet");
       if (!mapRef.current) return;
       const p = { lat, lng };
+      latestPositionRef.current = p;
       if (markerRef.current) {
         markerRef.current.setLatLng(p);
       } else {

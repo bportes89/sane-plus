@@ -14,6 +14,7 @@ type ViaCepDto = {
 type NominatimItem = {
   lat?: string;
   lon?: string;
+  display_name?: string;
   address?: {
     postcode?: string;
     road?: string;
@@ -25,11 +26,47 @@ type NominatimItem = {
     municipality?: string;
     state?: string;
     state_code?: string;
+    country_code?: string;
   };
 };
 
+const UF_TO_STATE: Record<string, string> = {
+  AC: "Acre",
+  AL: "Alagoas",
+  AP: "Amapá",
+  AM: "Amazonas",
+  BA: "Bahia",
+  CE: "Ceará",
+  DF: "Distrito Federal",
+  ES: "Espírito Santo",
+  GO: "Goiás",
+  MA: "Maranhão",
+  MT: "Mato Grosso",
+  MS: "Mato Grosso do Sul",
+  MG: "Minas Gerais",
+  PA: "Pará",
+  PB: "Paraíba",
+  PR: "Paraná",
+  PE: "Pernambuco",
+  PI: "Piauí",
+  RJ: "Rio de Janeiro",
+  RN: "Rio Grande do Norte",
+  RS: "Rio Grande do Sul",
+  RO: "Rondônia",
+  RR: "Roraima",
+  SC: "Santa Catarina",
+  SP: "São Paulo",
+  SE: "Sergipe",
+  TO: "Tocantins",
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit) {
-  const res = await fetch(url, init);
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    return { ok: false as const, status: 502, data: null as T | null };
+  }
   if (!res.ok) return { ok: false as const, status: res.status, data: null as T | null };
   const data = (await res.json().catch(() => null)) as T | null;
   if (!data) return { ok: false as const, status: 502, data: null as T | null };
@@ -76,44 +113,73 @@ export async function GET(req: NextRequest) {
     (value ?? "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
       .trim()
       .toLowerCase();
 
-  function scoreCandidate(item: NominatimItem) {
-    const address = item.address ?? {};
+  const normalizedState = normalize(state);
+  const normalizedStateName = normalize(state ? UF_TO_STATE[state] ?? state : null);
+  const normalizedCity = normalize(city);
+  const normalizedStreet = normalize(street);
+  const normalizedNeighborhood = normalize(neighborhood);
+  const searchState = state ? UF_TO_STATE[state] ?? state : null;
+
+  function stateMatches(value: string | null | undefined) {
+    const normalizedValue = normalize(value);
+    if (!normalizedValue) return false;
+    return normalizedValue === normalizedState || normalizedValue === normalizedStateName;
+  }
+
+  function toCandidate(item: NominatimItem, searchRank: number) {
+    const lat = item.lat ? Number(item.lat) : null;
+    const lng = item.lon ? Number(item.lon) : null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return {
+      lat: lat as number,
+      lng: lng as number,
+      address: item.address ?? {},
+      searchRank,
+    };
+  }
+
+  function scoreCandidate(candidate: NonNullable<ReturnType<typeof toCandidate>>) {
+    const address = candidate.address;
     const itemCity = normalize(
       address.city ?? address.town ?? address.village ?? address.municipality ?? null,
     );
-    const itemState = normalize(address.state_code ?? address.state ?? null);
+    const itemStateCode = normalize(address.state_code ?? null);
+    const itemStateName = normalize(address.state ?? null);
     const itemRoad = normalize(address.road ?? null);
     const itemNeighborhood = normalize(address.neighbourhood ?? address.suburb ?? null);
     const itemCep = (address.postcode ?? "").replace(/\D/g, "");
-    const targetCity = normalize(city);
-    const targetState = normalize(state);
-    const targetStreet = normalize(street);
-    const targetNeighborhood = normalize(neighborhood);
 
-    let score = 0;
-    if (itemCep === cep) score += 5;
-    if (targetState && itemState === targetState) score += 4;
-    if (targetCity && itemCity === targetCity) score += 4;
-    if (targetStreet && itemRoad.includes(targetStreet)) score += 3;
-    if (targetNeighborhood && itemNeighborhood.includes(targetNeighborhood)) score += 2;
+    let score = candidate.searchRank;
+    if (itemCep === cep) score += 12;
+    if (normalizedState && (itemStateCode === normalizedState || stateMatches(address.state))) score += 8;
+    if (normalizedCity && itemCity === normalizedCity) score += 8;
+    if (normalizedStreet && (itemRoad === normalizedStreet || itemRoad.includes(normalizedStreet))) score += 5;
+    if (
+      normalizedNeighborhood &&
+      (itemNeighborhood === normalizedNeighborhood || itemNeighborhood.includes(normalizedNeighborhood))
+    ) {
+      score += 4;
+    }
+    if ((address.country_code ?? "").toLowerCase() === "br") score += 1;
+    if (normalizedState && itemStateCode && itemStateCode !== normalizedState) score -= 6;
+    if (normalizedState && itemStateName && !stateMatches(address.state)) score -= 6;
+    if (normalizedCity && itemCity && itemCity !== normalizedCity) score -= 6;
     return score;
   }
 
-  async function geocode(searchUrl: string) {
+  async function geocode(searchUrl: string, searchRank: number) {
     const r = await fetchJson<NominatimItem[]>(searchUrl, {
       headers: nominatimHeaders,
       cache: "no-store",
     });
-    if (!r.ok || !r.data || !Array.isArray(r.data) || r.data.length === 0) return null;
-    const ordered = [...r.data].sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
-    const first = ordered[0] ?? null;
-    const lat = first?.lat ? Number(first.lat) : null;
-    const lng = first?.lon ? Number(first.lon) : null;
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat: lat as number, lng: lng as number };
+    if (!r.ok || !r.data || !Array.isArray(r.data) || r.data.length === 0) return [];
+    return r.data
+      .map((item) => toCandidate(item, searchRank))
+      .filter((item): item is NonNullable<typeof item> => item !== null);
   }
 
   const base = "https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=br";
@@ -123,12 +189,40 @@ export async function GET(req: NextRequest) {
   });
   if (street) structuredParams.set("street", street);
   if (city) structuredParams.set("city", city);
-  if (state) structuredParams.set("state", state);
-  const byStructured = await geocode(`${base}&${structuredParams.toString()}`);
+  if (searchState) structuredParams.set("state", searchState);
+  const queries = [
+    { url: `${base}&${structuredParams.toString()}`, rank: 30 },
+    {
+      url: `${base}&q=${encodeURIComponent(
+        [street, neighborhood, city, searchState, "Brasil", cep].filter(Boolean).join(", "),
+      )}`,
+      rank: 26,
+    },
+    {
+      url: `${base}&q=${encodeURIComponent([street, city, searchState, "Brasil"].filter(Boolean).join(", "))}`,
+      rank: 23,
+    },
+    {
+      url: `${base}&q=${encodeURIComponent([neighborhood, city, searchState, "Brasil"].filter(Boolean).join(", "))}`,
+      rank: 18,
+    },
+    {
+      url: `${base}&q=${encodeURIComponent([city, searchState, "Brasil", cep].filter(Boolean).join(", "))}`,
+      rank: 14,
+    },
+    {
+      url: `${base}&q=${encodeURIComponent([city, searchState, "Brasil"].filter(Boolean).join(", "))}`,
+      rank: 10,
+    },
+    { url: `${base}&postalcode=${encodeURIComponent(cep)}`, rank: 8 },
+  ];
 
-  const query = [street, neighborhood, city, state, "Brasil"].filter(Boolean).join(", ") || `${cep}, Brasil`;
-  const byQuery = byStructured ?? (await geocode(`${base}&q=${encodeURIComponent(query)}`));
-  const byPostal = byQuery ?? (await geocode(`${base}&postalcode=${encodeURIComponent(cep)}`));
+  const allCandidates = (
+    await Promise.all(queries.map((entry) => geocode(entry.url, entry.rank)))
+  ).flat();
+
+  const bestCandidate = [...allCandidates]
+    .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0] ?? null;
 
   const label = [street, neighborhood, city && state ? `${city}/${state}` : city || state]
     .filter(Boolean)
@@ -141,8 +235,8 @@ export async function GET(req: NextRequest) {
       neighborhood,
       city,
       state,
-      lat: byPostal?.lat ?? null,
-      lng: byPostal?.lng ?? null,
+      lat: bestCandidate?.lat ?? null,
+      lng: bestCandidate?.lng ?? null,
       label: label || null,
     },
     { headers },
